@@ -15,11 +15,14 @@ type Case = {
   name: string;
   client?: { timeoutMs: number };
   call: {
-    operation: "check" | "batchCheck";
+    operation: "check" | "batchCheck" | "listObjects";
     endUserToken: string;
     consistency?: Consistency;
     action?: string;
     resource?: string;
+    type?: string;
+    limit?: number;
+    cursor?: string;
     checks?: { action: string; resource: string; count?: number }[];
   };
   expectRequest: { method: string; path: string; body?: unknown };
@@ -95,22 +98,31 @@ async function run(c: Case) {
     let error: unknown;
     try {
       result =
-        call.operation === "check"
-          ? await authz.check({
+        call.operation === "listObjects"
+          ? await authz.listObjects({
               action: call.action as string,
-              resource: call.resource as string,
+              type: call.type as string,
               endUserToken: call.endUserToken,
+              ...(call.limit !== undefined && { limit: call.limit }),
+              ...(call.cursor !== undefined && { cursor: call.cursor }),
               ...(call.consistency && { consistency: call.consistency }),
             })
-          : await authz.batchCheck(
-              (call.checks ?? []).flatMap(({ count = 1, ...check }) =>
-                Array.from({ length: count }, () => check),
-              ),
-              {
+          : call.operation === "check"
+            ? await authz.check({
+                action: call.action as string,
+                resource: call.resource as string,
                 endUserToken: call.endUserToken,
                 ...(call.consistency && { consistency: call.consistency }),
-              },
-            );
+              })
+            : await authz.batchCheck(
+                (call.checks ?? []).flatMap(({ count = 1, ...check }) =>
+                  Array.from({ length: count }, () => check),
+                ),
+                {
+                  endUserToken: call.endUserToken,
+                  ...(call.consistency && { consistency: call.consistency }),
+                },
+              );
     } catch (e) {
       error = e;
     }

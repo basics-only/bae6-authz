@@ -1,0 +1,33 @@
+{
+  "name": "listObjects raises instead of returning an empty page when authz could not list",
+  "call": {
+    "operation": "listObjects",
+    "endUserToken": "alice-token",
+    "action": "read",
+    "type": "document"
+  },
+  "expectRequest": {
+    "method": "POST",
+    "path": "/v1/list-objects",
+    "body": {
+      "application": "crm",
+      "relation": "read",
+      "type": "document"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "requestId": "req_l2",
+      "objects": [],
+      "code": "timeout"
+    }
+  },
+  "expect": {
+    "error": {
+      "type": "AuthzIndeterminateError",
+      "code": "timeout",
+      "requestId": "req_l2"
+    }
+  }
+}

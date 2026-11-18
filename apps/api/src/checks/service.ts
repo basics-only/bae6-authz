@@ -14,7 +14,14 @@ import {
 export type Consistency = "minimize_latency" | "higher_consistency";
 
 export type Decision = "allow" | "deny" | "indeterminate";
-export type IndeterminateCode = "timeout" | "backend_error" | "no_active_model";
+export type IndeterminateCode =
+  | "timeout"
+  | "backend_error"
+  | "no_active_model"
+  | "result_truncated";
+
+/** OpenFGA's OPENFGA_LIST_OBJECTS_MAX_RESULTS default; keep equal to the deployed value. */
+export const LIST_OBJECTS_MAX_RESULTS = 1000;
 
 export interface CheckResult {
   status: Decision;
@@ -32,6 +39,14 @@ export interface BatchItem {
 export interface BatchResult {
   modelId?: string;
   results: { correlationId: string; status: Decision }[];
+}
+
+export interface ListPage {
+  objects: string[];
+  /** The last object of this page, when more follow. */
+  after?: string;
+  modelId?: string;
+  code?: IndeterminateCode;
 }
 
 /** The request is malformed for this application's model (unknown type or relation). */
@@ -56,7 +71,7 @@ export function createCheckService(deps: {
   async function guarded<T>(
     organization: string,
     applicationId: string,
-    operation: "check" | "batch_check",
+    operation: "check" | "batch_check" | "list_objects",
     call: (client: OpenFgaClient, modelId: string) => Promise<T>,
     fail: (code: IndeterminateCode) => T,
   ): Promise<T> {
@@ -177,6 +192,58 @@ export function createCheckService(deps: {
           };
         },
         allIndeterminate,
+      );
+    },
+
+    /**
+     * One page of the objects of `type` the end user holds `relation` on, in ascending
+     * order after `after`. OpenFGA has no pagination, so every page re-runs the listing.
+     */
+    list(
+      organization: string,
+      applicationId: string,
+      endUser: string,
+      input: {
+        relation: string;
+        type: string;
+        limit: number;
+        after?: string | undefined;
+        consistency?: Consistency | undefined;
+      },
+    ): Promise<ListPage> {
+      return guarded<ListPage>(
+        organization,
+        applicationId,
+        "list_objects",
+        async (client, modelId) => {
+          // shortcut: OpenFGA's deadline can still cut a list short without a signal;
+          // upgrade to StreamedListObjects if lists approach the cap or the deadline.
+          const { objects } = await client.listObjects(
+            {
+              user: `user:${endUser}`,
+              relation: input.relation,
+              type: input.type,
+            },
+            requestOptions(input.consistency),
+          );
+          // At the cap OpenFGA may have dropped objects; a partial list must not look complete.
+          if (objects.length >= LIST_OBJECTS_MAX_RESULTS) {
+            return { objects: [], modelId, code: "result_truncated" };
+          }
+          const { after } = input;
+          const sorted = objects
+            .filter((o) => after === undefined || o > after)
+            .sort();
+          const page = sorted.slice(0, input.limit);
+          return {
+            objects: page,
+            modelId,
+            ...(sorted.length > page.length
+              ? { after: page[page.length - 1] as string }
+              : {}),
+          };
+        },
+        (code) => ({ objects: [], code }),
       );
     },
   };

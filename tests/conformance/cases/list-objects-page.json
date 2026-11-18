@@ -1,0 +1,39 @@
+{
+  "name": "listObjects sends limit and cursor and returns the page and next cursor",
+  "call": {
+    "operation": "listObjects",
+    "endUserToken": "alice-token",
+    "action": "read",
+    "type": "document",
+    "limit": 2,
+    "cursor": "ZG9jdW1lbnQ6YQ"
+  },
+  "expectRequest": {
+    "method": "POST",
+    "path": "/v1/list-objects",
+    "body": {
+      "application": "crm",
+      "relation": "read",
+      "type": "document",
+      "limit": 2,
+      "cursor": "ZG9jdW1lbnQ6YQ"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "requestId": "req_l1",
+      "modelId": "01HZX3MODEL",
+      "objects": ["document:b", "document:c"],
+      "nextCursor": "ZG9jdW1lbnQ6Yw"
+    }
+  },
+  "expect": {
+    "result": {
+      "requestId": "req_l1",
+      "modelId": "01HZX3MODEL",
+      "objects": ["document:b", "document:c"],
+      "nextCursor": "ZG9jdW1lbnQ6Yw"
+    }
+  }
+}

@@ -82,6 +82,16 @@ class BatchDecision:
     model_id: str | None = None
 
 
+@dataclass(frozen=True)
+class ObjectPage:
+    request_id: str
+    # Ascending `type:id` objects the user holds the action on.
+    objects: list[str]
+    model_id: str | None = None
+    # Pass as `cursor` for the next page; None on the last page.
+    next_cursor: str | None = None
+
+
 def _str(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
@@ -218,6 +228,46 @@ class Authz:
             request_id=request_id,
             model_id=_str(body.get("modelId")),
             results=[_item_decision(by_id.get(str(i))) for i in range(len(checks))],
+        )
+
+    async def list_objects(
+        self,
+        *,
+        action: str,
+        type: str,
+        end_user_token: str,
+        limit: int | None = None,
+        cursor: str | None = None,
+        consistency: Consistency | None = None,
+    ) -> ObjectPage:
+        """One page of the `type` objects the end user holds `action` on.
+
+        Raises AuthzIndeterminateError when authz cannot list; never returns a partial guess then.
+        """
+        payload: dict[str, object] = {
+            "application": self._application,
+            "relation": action,
+            "type": type,
+        }
+        for key, value in (("limit", limit), ("cursor", cursor), ("consistency", consistency)):
+            if value is not None:
+                payload[key] = value
+        body = await self._post("/v1/list-objects", end_user_token, payload)
+        request_id = _str(body.get("requestId"))
+        objects = body.get("objects")
+        if (
+            request_id is None
+            or not isinstance(objects, list)
+            or not all(isinstance(o, str) for o in objects)
+        ):
+            raise _invalid_response()
+        if body.get("code") is not None:
+            raise AuthzIndeterminateError(_str(body.get("code")), request_id)
+        return ObjectPage(
+            request_id=request_id,
+            objects=objects,
+            model_id=_str(body.get("modelId")),
+            next_cursor=_str(body.get("nextCursor")),
         )
 
     async def _post(
