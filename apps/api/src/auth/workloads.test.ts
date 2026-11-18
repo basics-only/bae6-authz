@@ -21,32 +21,35 @@ const ISSUER = "https://idp.example.test";
 const verifier =
   (claims: Record<string, unknown>): TokenVerifier =>
   async (token) =>
-    token === "good" ? { issuer: ISSUER, subject: "sub-1", claims } : null;
+    token === "good"
+      ? { issuer: ISSUER, organization: "acme", subject: "sub-1", claims }
+      : null;
 
 test("a verified workload gets the check scope and only its bound applications", async () => {
   const seen: string[][] = [];
   const authenticate = workloadAuthenticator(
     verifier({ azp: "crm-service" }),
-    async (issuer, workload) => {
-      seen.push([issuer, workload]);
+    async (organization, issuer, workload) => {
+      seen.push([organization, issuer, workload]);
       return ["crm-prod"];
     },
   );
   const principal = await authenticate("Bearer good");
   assert.deepEqual(principal, {
     subject: `${ISSUER}|crm-service`,
+    organization: "acme",
     scopes: ["check"],
     applications: ["crm-prod"],
     clientId: "crm-service",
     issuer: ISSUER,
   });
-  assert.deepEqual(seen, [[ISSUER, "crm-service"]]);
+  assert.deepEqual(seen, [["acme", ISSUER, "crm-service"]]);
 });
 
 test("a workload is identified by azp, else client_id, else sub", async () => {
   const workloadOf = async (claims: Record<string, unknown>) => {
     let workload = "";
-    await workloadAuthenticator(verifier(claims), async (_, w) => {
+    await workloadAuthenticator(verifier(claims), async (_, __, w) => {
       workload = w;
       return [];
     })("Bearer good");
@@ -62,6 +65,7 @@ test("a principal is admin only when its token was verified as admin", async () 
     workloadAuthenticator(
       async () => ({
         issuer: ISSUER,
+        organization: "acme",
         subject: "sub-1",
         claims: { azp: "ops" },
         ...(admin === undefined ? {} : { admin }),
@@ -93,15 +97,22 @@ test("an invalid token or malformed header is not authenticated, and never reach
 const principals: Record<string, Principal> = {
   admin: {
     subject: "admin",
+    organization: "acme",
     scopes: ["bindings:write"],
     applications: ["*"],
   },
   appAdmin: {
     subject: "app-admin",
+    organization: "acme",
     scopes: ["bindings:write"],
     applications: ["crm-prod"],
   },
-  noScope: { subject: "ns", scopes: ["check"], applications: ["*"] },
+  noScope: {
+    subject: "ns",
+    organization: "acme",
+    scopes: ["check"],
+    applications: ["*"],
+  },
 };
 
 async function withRoutes(
@@ -117,11 +128,11 @@ async function withRoutes(
 ) {
   const calls: string[] = [];
   const store = {
-    bind: async (actor: string, b: WorkloadBinding) => {
-      calls.push(`bind ${actor} ${b.application}`);
+    bind: async (actor: string, org: string, b: WorkloadBinding) => {
+      calls.push(`bind ${actor} ${org} ${b.application}`);
     },
-    unbind: async (actor: string, b: WorkloadBinding) => {
-      calls.push(`unbind ${actor} ${b.application}`);
+    unbind: async (actor: string, org: string, b: WorkloadBinding) => {
+      calls.push(`unbind ${actor} ${org} ${b.application}`);
     },
   } as unknown as BindingStore;
   const server = createApp({
@@ -164,7 +175,10 @@ test("only a platform administrator with bindings:write can change bindings", ()
 
     assert.equal(await call("admin", "POST", path, binding), 201);
     assert.equal(await call("admin", "DELETE", DELETE_PATH), 204);
-    assert.deepEqual(calls, ["bind admin crm-prod", "unbind admin crm-prod"]);
+    assert.deepEqual(calls, [
+      "bind admin acme crm-prod",
+      "unbind admin acme crm-prod",
+    ]);
   }));
 
 test("a malformed binding is rejected before it reaches the store", () =>
@@ -202,7 +216,9 @@ async function withStore(
     const c = await pool.connect();
     await migrate(c);
     await c.query(
-      "INSERT INTO applications (id, name, environment, store_id) VALUES ('crm-prod', 'crm', 'prod', 'store-1')",
+      `INSERT INTO applications (organization_id, id, name, environment, store_id)
+       VALUES ('acme', 'crm-prod', 'crm', 'prod', 'store-1'),
+              ('globex', 'hr-prod', 'hr', 'prod', 'store-2')`,
     );
     c.release();
     await fn(createBindingStore(pool), pool);
@@ -215,18 +231,22 @@ async function withStore(
 
 test("a binding is looked up, audited once, and removed", opts, () =>
   withStore(async (store, pool) => {
-    assert.deepEqual(await store.lookup(ISSUER, "w"), []);
+    assert.deepEqual(await store.lookup("acme", ISSUER, "w"), []);
 
-    await store.bind("admin", binding);
-    await store.bind("admin", binding);
-    assert.deepEqual(await store.lookup(ISSUER, "w"), ["crm-prod"]);
-    // Bound to one workload, not another, and not under another issuer.
-    assert.deepEqual(await store.lookup(ISSUER, "other"), []);
-    assert.deepEqual(await store.lookup("https://other.example", "w"), []);
+    await store.bind("admin", "acme", binding);
+    await store.bind("admin", "acme", binding);
+    assert.deepEqual(await store.lookup("acme", ISSUER, "w"), ["crm-prod"]);
+    // Bound to one workload, not another, not under another issuer, nor in another organization.
+    assert.deepEqual(await store.lookup("acme", ISSUER, "other"), []);
+    assert.deepEqual(
+      await store.lookup("acme", "https://other.example", "w"),
+      [],
+    );
+    assert.deepEqual(await store.lookup("globex", ISSUER, "w"), []);
 
-    await store.unbind("admin", binding);
-    await store.unbind("admin", binding);
-    assert.deepEqual(await store.lookup(ISSUER, "w"), []);
+    await store.unbind("admin", "acme", binding);
+    await store.unbind("admin", "acme", binding);
+    assert.deepEqual(await store.lookup("acme", ISSUER, "w"), []);
 
     const { rows } = await pool.query(
       "SELECT actor, action, application_id FROM audit_events ORDER BY id",
@@ -244,7 +264,12 @@ test(
   () =>
     withStore(async (store, pool) => {
       await assert.rejects(
-        store.bind("admin", { ...binding, application: "hr-prod" }),
+        store.bind("admin", "acme", { ...binding, application: "nope-prod" }),
+        ApplicationNotFound,
+      );
+      // Another organization's application is refused the same way.
+      await assert.rejects(
+        store.bind("admin", "acme", { ...binding, application: "hr-prod" }),
         ApplicationNotFound,
       );
       const { rowCount } = await pool.query("SELECT 1 FROM audit_events");

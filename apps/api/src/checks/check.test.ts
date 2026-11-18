@@ -27,11 +27,28 @@ const opts = {
 const principals: Record<string, Principal> = {
   admin: {
     subject: "admin",
+    organization: "acme",
     scopes: ["applications:write", "check"],
     applications: ["*"],
   },
-  crmOnly: { subject: "crm", scopes: ["check"], applications: ["crm-prod"] },
-  noScope: { subject: "ns", scopes: [], applications: ["*"] },
+  crmOnly: {
+    subject: "crm",
+    organization: "acme",
+    scopes: ["check"],
+    applications: ["crm-prod"],
+  },
+  noScope: {
+    subject: "ns",
+    organization: "acme",
+    scopes: [],
+    applications: ["*"],
+  },
+  otherTenant: {
+    subject: "globex-admin",
+    organization: "globex",
+    scopes: ["check"],
+    applications: ["*"],
+  },
 };
 const endUsers: Record<string, string> = {
   "alice-token": "alice",
@@ -146,7 +163,7 @@ async function withApp(
     const binding = await createResolver(
       dbLookup(pool),
       apiUrl as string,
-    ).resolve("crm-prod");
+    ).resolve("acme", "crm-prod");
     const fga = new OpenFgaClient({
       apiUrl: apiUrl as string,
       storeId: binding.storeId,
@@ -271,6 +288,25 @@ test(
         404,
       );
       assert.equal((await admin("crmOnly", read, "alice-token")).status, 200);
+    }),
+);
+
+test(
+  "another organization's application is indistinguishable from one that does not exist",
+  opts,
+  () =>
+    withApp(async ({ admin }) => {
+      const foreign = await admin("otherTenant", read, "alice-token");
+      const missing = await admin(
+        "otherTenant",
+        { ...read, application: "hr-prod" },
+        "alice-token",
+      );
+      assert.equal(foreign.status, 404);
+      assert.deepEqual(
+        { ...foreign.body, requestId: null },
+        { ...missing.body, requestId: null },
+      );
     }),
 );
 

@@ -16,8 +16,25 @@ test("refuses an admin subject that could name another OpenFGA user", async () =
   // Rejected before any request, so the unreachable URL is never contacted.
   for (const admin of ["", "a#b", "user:x", "a b", "a|b"]) {
     await assert.rejects(
-      bootstrapAdmin("unused.fga", { apiUrl: "http://127.0.0.1:1", admin }),
+      bootstrapAdmin("unused.fga", {
+        apiUrl: "http://127.0.0.1:1",
+        admin,
+        organization: "acme",
+      }),
       /plain subject/,
+    );
+  }
+});
+
+test("refuses an organization that could name another OpenFGA object", async () => {
+  for (const organization of ["", "Acme", "acme#member", "organization:acme"]) {
+    await assert.rejects(
+      bootstrapAdmin("unused.fga", {
+        apiUrl: "http://127.0.0.1:1",
+        admin: "olga",
+        organization,
+      }),
+      /organization must be/,
     );
   }
 });
@@ -40,11 +57,9 @@ test(
       for (let i = 0; i < 101; i++) {
         filler.push((await client.createStore({ name: "filler" })).id);
       }
-      ({ storeId } = await bootstrapAdmin(model, { apiUrl, admin: "olga" }));
-      await assert.rejects(
-        bootstrapAdmin(model, { apiUrl, admin: "olga" }),
-        /already exists/,
-      );
+      const target = { apiUrl, admin: "olga", organization: "acme" };
+      ({ storeId } = await bootstrapAdmin(model, target));
+      await assert.rejects(bootstrapAdmin(model, target), /already exists/);
     } finally {
       for (const id of [...filler, ...(storeId ? [storeId] : [])]) {
         await new OpenFgaClient({ apiUrl, storeId: id }).deleteStore();

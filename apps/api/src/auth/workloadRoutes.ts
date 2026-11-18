@@ -69,7 +69,12 @@ export function workloadRoutes(store: BindingStore) {
           throw invalid();
         }
         const binding = toBinding(body as Record<string, unknown>);
-        await store.bind(principal.subject, binding, requestIdOf(res));
+        await store.bind(
+          principal.subject,
+          principal.organization,
+          binding,
+          requestIdOf(res),
+        );
         send(res, 201, binding);
       } else {
         const binding = toBinding({
@@ -77,7 +82,12 @@ export function workloadRoutes(store: BindingStore) {
           workload: url.searchParams.get("workload"),
           application: url.searchParams.get("application"),
         });
-        await store.unbind(principal.subject, binding, requestIdOf(res));
+        await store.unbind(
+          principal.subject,
+          principal.organization,
+          binding,
+          requestIdOf(res),
+        );
         res.statusCode = 204;
         res.end();
       }

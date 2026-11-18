@@ -9,7 +9,7 @@ const usage = `usage:
   pnpm model validate-extension <extension.fga>   (core + extension, both suites)
   pnpm model write-extension <extension.fga> --store-id <id> [--api-url <url>]
   pnpm model write <model.fga> --store-id <id> [--api-url <url>]   (default OPENFGA_API_URL)
-  pnpm model bootstrap-admin (--issuer <iss> --workload <id> | --admin <subject>) [--api-url <url>]   (default OPENFGA_API_URL)`;
+  pnpm model bootstrap-admin --organization <org> (--issuer <iss> --workload <id> | --admin <subject>) [--api-url <url>]   (default OPENFGA_API_URL)`;
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -17,6 +17,7 @@ const { positionals, values } = parseArgs({
     "store-id": { type: "string" },
     "api-url": { type: "string" },
     admin: { type: "string" },
+    organization: { type: "string" },
     issuer: { type: "string" },
     workload: { type: "string" },
   },
@@ -34,13 +35,14 @@ if (command === "bootstrap-admin") {
       : undefined);
   const apiUrl = values["api-url"] ?? process.env.OPENFGA_API_URL;
   const conflict = values.admin !== undefined && (named || partial);
-  if (!admin || !apiUrl || partial || conflict) {
+  const organization = values.organization;
+  if (!admin || !organization || !apiUrl || partial || conflict) {
     console.error(usage);
     process.exit(2);
   }
   const { storeId, modelId } = await bootstrapAdmin(
     resolve(import.meta.dirname, "../../models/openfga/bae6-admin.fga"),
-    { apiUrl, admin },
+    { apiUrl, admin, organization },
   );
   console.log(`BAE6_ADMIN_STORE_ID=${storeId}`);
   console.log(`BAE6_ADMIN_MODEL_ID=${modelId}`);

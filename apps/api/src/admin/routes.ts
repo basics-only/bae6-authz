@@ -135,7 +135,12 @@ export function adminRoutes(service: AdminService) {
         send(
           res,
           201,
-          await service.register(principal.subject, input, requestIdOf(res)),
+          await service.register(
+            principal.subject,
+            principal.organization,
+            input,
+            requestIdOf(res),
+          ),
         );
       } else if (pathname === "/v1/audit" && req.method === "GET") {
         requireScope(principal, "audit:read");
@@ -143,6 +148,7 @@ export function adminRoutes(service: AdminService) {
           res,
           200,
           await service.audit(
+            principal.organization,
             principal.applications,
             pageParams(url),
             auditFilter(url),
@@ -153,11 +159,23 @@ export function adminRoutes(service: AdminService) {
         send(
           res,
           200,
-          await service.list(principal.applications, pageParams(url)),
+          await service.list(
+            principal.organization,
+            principal.applications,
+            pageParams(url),
+          ),
         );
       } else if (byId && req.method === "GET") {
         requireScope(principal, "applications:read");
-        send(res, 200, await service.get(byId, principal.applications));
+        send(
+          res,
+          200,
+          await service.get(
+            principal.organization,
+            byId,
+            principal.applications,
+          ),
+        );
       } else if (pathname === "/v1/models" && req.method === "GET") {
         requireScope(principal, "models:read");
         const application = url.searchParams.get("application");
@@ -172,6 +190,7 @@ export function adminRoutes(service: AdminService) {
           res,
           200,
           await service.models(
+            principal.organization,
             application,
             principal.applications,
             pageParams(url),

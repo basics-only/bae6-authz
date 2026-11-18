@@ -30,13 +30,14 @@ before(async () => {
   const verify = oidcTokenVerifier([
     {
       issuer: ISSUER,
+      organization: "acme",
       audience: "authz",
       jwksUri: `http://127.0.0.1:${(idp.address() as AddressInfo).port}/jwks`,
     },
   ]);
   const service = {
-    check: async (application: string, user: string) => {
-      asked.push([application, user]);
+    check: async (organization: string, application: string, user: string) => {
+      asked.push([organization, application, user]);
       return { status: "allow" };
     },
   } as unknown as CheckService;
@@ -96,7 +97,7 @@ test("a delegated token for user U lets the workload check only as U", async () 
   asked.length = 0;
   const result = await check(await token({ azp: "crm-service", sub: "alice" }));
   assert.equal(result.status, 200);
-  assert.deepEqual(asked, [["crm-prod", "alice"]]);
+  assert.deepEqual(asked, [["acme", "crm-prod", "alice"]]);
 });
 
 test("a user named in a header is ignored and in the body is rejected", async () => {
@@ -108,7 +109,7 @@ test("a user named in a header is ignored and in the body is rejected", async ()
     "authz-end-user": "mallory",
   };
   assert.equal((await check(alice, { headers: forgedHeaders })).status, 200);
-  assert.deepEqual(asked, [["crm-prod", "alice"]]);
+  assert.deepEqual(asked, [["acme", "crm-prod", "alice"]]);
 
   asked.length = 0;
   assert.equal((await check(alice, { body: { user: "mallory" } })).status, 400);

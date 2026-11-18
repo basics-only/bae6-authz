@@ -3,7 +3,11 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
-import { oidcTokenVerifier, type TokenVerifier } from "./oidc.js";
+import {
+  type OidcIssuer,
+  oidcTokenVerifier,
+  type TokenVerifier,
+} from "./oidc.js";
 
 const ISSUER = "https://idp.example.test";
 const AUDIENCE = "authz";
@@ -25,10 +29,13 @@ before(async () => {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const { port } = server.address() as AddressInfo;
   const jwksUri = `http://127.0.0.1:${port}/jwks`;
-  verify = oidcTokenVerifier([{ issuer: ISSUER, audience: AUDIENCE, jwksUri }]);
+  verify = oidcTokenVerifier([
+    { issuer: ISSUER, organization: "acme", audience: AUDIENCE, jwksUri },
+  ]);
   verifyWithAdmin = oidcTokenVerifier([
     {
       issuer: ISSUER,
+      organization: "acme",
       audience: AUDIENCE,
       adminAudience: "bae6-admin",
       jwksUri,
@@ -65,6 +72,7 @@ test("accepts a valid token and returns its issuer and subject", async () => {
   const verified = await verify(await sign());
   assert.equal(verified?.issuer, ISSUER);
   assert.equal(verified?.subject, "workload-a");
+  assert.equal(verified?.organization, "acme");
 });
 
 test("marks a token as admin only when it carries the admin audience", async () => {
@@ -84,6 +92,7 @@ test("refuses an adminAudience equal to the audience", () => {
       oidcTokenVerifier([
         {
           issuer: ISSUER,
+          organization: "acme",
           audience: AUDIENCE,
           adminAudience: AUDIENCE,
           jwksUri: "http://127.0.0.1:1/jwks",
@@ -186,7 +195,12 @@ test("rejects garbage that is not a JWT", async () => {
 
 test("throws, rather than reporting an invalid token, when the key set is unreachable", async () => {
   const down = oidcTokenVerifier([
-    { issuer: ISSUER, audience: AUDIENCE, jwksUri: "http://127.0.0.1:9/jwks" },
+    {
+      issuer: ISSUER,
+      organization: "acme",
+      audience: AUDIENCE,
+      jwksUri: "http://127.0.0.1:9/jwks",
+    },
   ]);
   await assert.rejects(down(await sign()));
 });
@@ -194,6 +208,7 @@ test("throws, rather than reporting an invalid token, when the key set is unreac
 test("refuses configuration with a symmetric algorithm or a plain-http remote key set", () => {
   const base = {
     issuer: ISSUER,
+    organization: "acme",
     audience: AUDIENCE,
     jwksUri: "https://idp.example.test/jwks",
   };
@@ -205,5 +220,37 @@ test("refuses configuration with a symmetric algorithm or a plain-http remote ke
     () =>
       oidcTokenVerifier([{ ...base, jwksUri: "http://idp.example.test/jwks" }]),
     /https/,
+  );
+});
+
+test("refuses an issuer without a valid organization", () => {
+  for (const organization of [
+    "",
+    "Acme",
+    "organization:acme",
+    "a".repeat(64),
+  ]) {
+    assert.throws(
+      () =>
+        oidcTokenVerifier([
+          {
+            issuer: ISSUER,
+            organization,
+            audience: AUDIENCE,
+            jwksUri: "https://idp.example.test/jwks",
+          },
+        ]),
+      /organization/,
+    );
+  }
+  const { organization: _, ...missing } = {
+    issuer: ISSUER,
+    organization: "acme",
+    audience: AUDIENCE,
+    jwksUri: "https://idp.example.test/jwks",
+  };
+  assert.throws(
+    () => oidcTokenVerifier([missing as OidcIssuer]),
+    /organization/,
   );
 });

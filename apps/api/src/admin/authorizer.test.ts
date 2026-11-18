@@ -27,7 +27,7 @@ async function adminStore() {
     ),
   );
   assert.ok(modelId);
-  const org = "organization:default";
+  const org = "organization:acme";
   await new OpenFgaClient({
     apiUrl: url,
     storeId,
@@ -59,7 +59,7 @@ test("an application admin for A cannot mutate B", opts, async () => {
     assert.equal(await authz.application("alice", relation, "b-prod"), false);
   }
   assert.equal(
-    await authz.organization("alice", "can_register_application"),
+    await authz.organization("alice", "can_register_application", "acme"),
     false,
   );
   assert.deepEqual(await authz.readableApplications("alice"), ["a-prod"]);
@@ -67,17 +67,20 @@ test("an application admin for A cannot mutate B", opts, async () => {
 
 test("an auditor can read audit but not mutate", opts, async () => {
   const authz = await adminStore();
-  assert.equal(await authz.organization("audrey", "can_read_audit"), true);
+  assert.equal(
+    await authz.organization("audrey", "can_read_audit", "acme"),
+    true,
+  );
   assert.equal(
     await authz.application("audrey", "can_read_audit", "b-prod"),
     true,
   );
   assert.equal(
-    await authz.organization("audrey", "can_register_application"),
+    await authz.organization("audrey", "can_register_application", "acme"),
     false,
   );
   assert.equal(
-    await authz.organization("audrey", "can_manage_bindings"),
+    await authz.organization("audrey", "can_manage_bindings", "acme"),
     false,
   );
   assert.equal(
@@ -96,15 +99,34 @@ test(
   async () => {
     const authz = await adminStore();
     assert.equal(
-      await authz.organization("olga", "can_register_application"),
+      await authz.organization("olga", "can_register_application", "acme"),
       true,
     );
     assert.equal(
       await authz.application("olga", "can_manage_model", "b-prod"),
       true,
     );
-    assert.equal(await authz.organization("mallory", "can_read_audit"), false);
+    assert.equal(
+      await authz.organization("mallory", "can_read_audit", "acme"),
+      false,
+    );
     assert.deepEqual(await authz.readableApplications("mallory"), []);
+  },
+);
+
+test(
+  "a security admin of one organization holds no role in another",
+  opts,
+  async () => {
+    const authz = await adminStore();
+    assert.equal(
+      await authz.organization("olga", "security_admin", "globex"),
+      false,
+    );
+    assert.equal(
+      await authz.organization("audrey", "can_read_audit", "globex"),
+      false,
+    );
   },
 );
 
@@ -114,13 +136,19 @@ test(
   async () => {
     const authz = await adminStore();
     assert.equal(
-      await authz.organization("olga#x", "can_register_application"),
+      await authz.organization("olga#x", "can_register_application", "acme"),
       false,
     );
     assert.equal(
-      await authz.organization("user:olga", "can_register_application"),
+      await authz.organization("user:olga", "can_register_application", "acme"),
       false,
     );
+    for (const organization of ["acme#member", "organization:acme", "Acme"]) {
+      assert.equal(
+        await authz.organization("olga", "security_admin", organization),
+        false,
+      );
+    }
     assert.equal(
       await authz.application("alice", "can_read", "a-prod#admin"),
       false,
@@ -135,10 +163,13 @@ test("an unreachable OpenFGA is a 503, never an allow", async () => {
     storeId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
     modelId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
   });
-  await assert.rejects(() => authz.organization("olga", "can_read_audit"), {
-    status: 503,
-    code: "authorization_unavailable",
-  });
+  await assert.rejects(
+    () => authz.organization("olga", "can_read_audit", "acme"),
+    {
+      status: 503,
+      code: "authorization_unavailable",
+    },
+  );
   await assert.rejects(() => authz.readableApplications("olga"), {
     status: 503,
   });

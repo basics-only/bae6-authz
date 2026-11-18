@@ -12,8 +12,9 @@ import { adminSubject, withAdminScopes } from "./elevate.js";
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = { skip: apiUrl ? false : "OPENFGA_API_URL not set" };
 
-const workload = (name: string): Principal => ({
+const workload = (name: string, organization = "acme"): Principal => ({
   subject: `https://idp.example.test|${name}`,
+  organization,
   scopes: ["check"],
   applications: ["crm-prod"],
   clientId: name,
@@ -38,7 +39,7 @@ async function elevator() {
     ),
   );
   assert.ok(modelId);
-  const org = "organization:default";
+  const org = "organization:acme";
   const user = (name: string) =>
     `user:${adminSubject("https://idp.example.test", name)}`;
   await new OpenFgaClient({
@@ -122,6 +123,16 @@ test(
     for (const name of ["crm-admin", "stranger"]) {
       assert.deepEqual(await elevate(workload(name)), workload(name));
     }
+  },
+);
+
+test(
+  "a security admin of one organization gets nothing in another",
+  opts,
+  async () => {
+    const elevate = await elevator();
+    const elsewhere = workload("ops", "globex");
+    assert.deepEqual(await elevate(elsewhere), elsewhere);
   },
 );
 

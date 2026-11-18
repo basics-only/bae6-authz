@@ -23,7 +23,7 @@ Postgres). The API (`bae6-authz-api`) and console (`bae6-authz-console`) are the
 scope. Administrative endpoints (applications, relationships, models, workload bindings,
 audit) return 403 to it unless its token carries the issuer's `adminAudience` and the
 workload holds a role in the `bae6-admin` store, which
-you create once with `bootstrap-admin --issuer <issuer> --workload <client id>`
+you create once with `bootstrap-admin --organization <org> --issuer <issuer> --workload <client id>`
 ([ADR 0004](decisions/0004-admin-authorization.md)). Only `security_admin` and `auditor`
 roles are enforced; an application-level admin gets no admin access yet. The console's
 sign-in is separate ([ADR 0006](decisions/0006-console-session.md)).
@@ -35,7 +35,7 @@ The main environment variables of the API:
 | `BAE6_DATABASE_URL` | Postgres URL for the `authz` database (a separate role from OpenFGA's). Required. |
 | `OPENFGA_API_URL` | OpenFGA base URL. Required. |
 | `BAE6_AUTH_MODE` | Required: `oidc` for production, `fixture` for local only. Fixture mode with `NODE_ENV=production` stops the process; the image defaults to production. |
-| `BAE6_OIDC_ISSUERS` | Required for `oidc`: a JSON array of `{issuer, audience, jwksUri}`, plus an optional `adminAudience` (different from `audience`). Only tokens carrying `adminAudience` can administer bae6-authz; without it no workload can. |
+| `BAE6_OIDC_ISSUERS` | Required for `oidc`: a JSON array of `{issuer, organization, audience, jwksUri}` (`organization` is the tenant its tokens act in; a deployment upgraded from before tenancy keeps its data and admin roles in `default`), plus an optional `adminAudience` (different from `audience`). Only tokens carrying `adminAudience` can administer bae6-authz; without it no workload can. |
 | `BAE6_ADMIN_STORE_ID`, `BAE6_ADMIN_MODEL_ID` | Required for `oidc`: the `bae6-admin` store and its pinned model, printed by `bootstrap-admin`. The API does not start without them. |
 | `BAE6_FIXTURE_AUTH_FILE`, `BAE6_FIXTURE_END_USERS_FILE` | Fixture mode only: the dev token files. |
 | `BAE6_CHECK_TIMEOUT_MS`, `BAE6_BATCH_MAX`, `BAE6_READY_TIMEOUT_MS` | Check deadline, batch size cap, readiness probe deadline. |

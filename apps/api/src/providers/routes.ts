@@ -67,7 +67,7 @@ export function providerRoutes(service: ProviderService) {
         send(res, 200, {
           application,
           provider: "databricks",
-          config: await service.get(application),
+          config: await service.get(principal.organization, application),
         });
       } else if (req.method === "PUT") {
         requireScope(principal, "providers:write");
@@ -84,6 +84,7 @@ export function providerRoutes(service: ProviderService) {
         permit(principal, application);
         const auditEventId = await service.put(
           principal.subject,
+          principal.organization,
           application,
           config,
           requestIdOf(res),
@@ -97,6 +98,7 @@ export function providerRoutes(service: ProviderService) {
         permit(principal, application);
         const auditEventId = await service.remove(
           principal.subject,
+          principal.organization,
           application,
           requestIdOf(res),
         );

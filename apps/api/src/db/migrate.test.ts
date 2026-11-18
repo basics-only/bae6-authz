@@ -23,9 +23,10 @@ async function withSchema(fn: (client: pg.Client) => Promise<void>) {
   }
 }
 
-const addApp = (client: pg.Client) =>
+const addApp = (client: pg.Client, organization = "acme") =>
   client.query(
-    "INSERT INTO applications (id, name, environment, store_id) VALUES ('crm-prod', 'crm', 'prod', 's1')",
+    "INSERT INTO applications (organization_id, id, name, environment, store_id) VALUES ($1, 'crm-prod', 'crm', 'prod', $2)",
+    [organization, `store-${organization}`],
   );
 
 test("applies to an empty database and re-running is a no-op", opts, () =>
@@ -40,7 +41,7 @@ test("rejects updating or deleting audit events", opts, () =>
   withSchema(async (client) => {
     await migrate(client);
     await client.query(
-      "INSERT INTO audit_events (actor, action, outcome) VALUES ('a', 'x', 'success')",
+      "INSERT INTO audit_events (organization_id, actor, action, outcome) VALUES ('acme', 'a', 'x', 'success')",
     );
     await assert.rejects(
       client.query("UPDATE audit_events SET actor = 'b'"),
@@ -60,13 +61,39 @@ test("allows only one active model binding per application", opts, () =>
     await addApp(client);
     const bind = (model: string, active: boolean) =>
       client.query(
-        "INSERT INTO model_bindings (application_id, model_id, active) VALUES ('crm-prod', $1, $2)",
+        "INSERT INTO model_bindings (organization_id, application_id, model_id, active) VALUES ('acme', 'crm-prod', $1, $2)",
         [model, active],
       );
     await bind("m1", true);
     await bind("m0", false);
     await assert.rejects(bind("m2", true), /model_bindings_one_active/);
   }),
+);
+
+test(
+  "an application ID is unique per organization, and no row can point at another organization's application",
+  opts,
+  () =>
+    withSchema(async (client) => {
+      await migrate(client);
+      await addApp(client, "acme");
+      await addApp(client, "globex");
+      await assert.rejects(
+        client.query(
+          "INSERT INTO applications (organization_id, id, name, environment, store_id) VALUES ('acme', 'crm-prod', 'crm', 'prod', 'store-other')",
+        ),
+        /applications_pkey/,
+      );
+      await assert.rejects(addApp(client, "Not-An-Org"), /check constraint/);
+      // crm-prod exists in acme and globex, never in initech.
+      for (const sql of [
+        "INSERT INTO model_bindings (organization_id, application_id, model_id) VALUES ('initech', 'crm-prod', 'm1')",
+        "INSERT INTO provider_configs (organization_id, application_id, provider, config) VALUES ('initech', 'crm-prod', 'databricks', '{}')",
+        "INSERT INTO workload_bindings (organization_id, application_id, issuer, workload) VALUES ('initech', 'crm-prod', 'i', 'w')",
+      ]) {
+        await assert.rejects(client.query(sql), /foreign key/, sql);
+      }
+    }),
 );
 
 test(
@@ -77,7 +104,7 @@ test(
       await migrate(client);
       await assert.rejects(
         client.query(
-          "INSERT INTO applications (id, name, environment, store_id) VALUES ('a-b-c', 'a', 'b-c', 's1')",
+          "INSERT INTO applications (organization_id, id, name, environment, store_id) VALUES ('acme', 'a-b-c', 'a', 'b-c', 's1')",
         ),
         /check constraint/,
       );
@@ -89,7 +116,7 @@ test("rejects an application id that is not name-environment", opts, () =>
     await migrate(client);
     await assert.rejects(
       client.query(
-        "INSERT INTO applications (id, name, environment, store_id) VALUES ('other', 'crm', 'prod', 's1')",
+        "INSERT INTO applications (organization_id, id, name, environment, store_id) VALUES ('acme', 'other', 'crm', 'prod', 's1')",
       ),
       /check constraint/,
     );

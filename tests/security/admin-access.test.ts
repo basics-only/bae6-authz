@@ -21,6 +21,8 @@ import {
 // bae6-admin store, never through the check-only scope every workload gets. Runs the real API with
 // a local issuer; needs BAE6_DATABASE_URL and OPENFGA_API_URL. Real IdPs are unverified.
 const ISSUER = "https://idp.example.test";
+// A second tenant's identity provider, mapped to another organization.
+const OTHER_ISSUER = "https://idp.globex.test";
 const AUDIENCE = "authz";
 const ADMIN_AUDIENCE = "bae6-admin";
 
@@ -30,31 +32,41 @@ let call: Call;
 let key: CryptoKey;
 let jwksUri: string;
 
-const token = (workload: string, sub = "svc", audience = AUDIENCE) =>
+const token = (
+  workload: string,
+  sub = "svc",
+  audience = AUDIENCE,
+  issuer = ISSUER,
+) =>
   new SignJWT({ azp: workload })
     .setProtectedHeader({ alg: "RS256", kid: "k1" })
-    .setIssuer(ISSUER)
+    .setIssuer(issuer)
     .setAudience(audience)
     .setSubject(sub)
     .setExpirationTime("5m")
     .sign(key);
 
 // What the IdP mints for a service account that administers authz.
-const adminToken = (workload: string) => token(workload, "svc", ADMIN_AUDIENCE);
+const adminToken = (workload: string, issuer = ISSUER) =>
+  token(workload, "svc", ADMIN_AUDIENCE, issuer);
 
 const oidcEnv = () => ({
   OPENFGA_API_URL: required("OPENFGA_API_URL"),
   BAE6_DATABASE_URL: required("BAE6_DATABASE_URL"),
   NODE_ENV: "development",
   BAE6_AUTH_MODE: "oidc",
-  BAE6_OIDC_ISSUERS: JSON.stringify([
-    {
-      issuer: ISSUER,
+  BAE6_OIDC_ISSUERS: JSON.stringify(
+    [
+      [ISSUER, "acme"],
+      [OTHER_ISSUER, "globex"],
+    ].map(([issuer, organization]) => ({
+      issuer,
+      organization,
       audience: AUDIENCE,
       adminAudience: ADMIN_AUDIENCE,
       jwksUri,
-    },
-  ]),
+    })),
+  ),
 });
 
 before(async () => {
@@ -73,6 +85,12 @@ before(async () => {
     ...(await adminStore([
       { issuer: ISSUER, workload: "ops", relation: "security_admin" },
       { issuer: ISSUER, workload: "reader", relation: "auditor" },
+      {
+        issuer: OTHER_ISSUER,
+        workload: "ops",
+        relation: "security_admin",
+        organization: "globex",
+      },
     ])),
   });
   call = client(api.url);
@@ -131,6 +149,66 @@ test("a workload with an admin role registers an application and binds a model",
     },
   });
   assert.equal(bind.status, 201);
+});
+
+test("a security admin of another organization cannot see or change this one's applications", async () => {
+  const name = unique("adm");
+  const application = `${name}-prod`;
+  await call("POST", "/v1/applications", {
+    token: await adminToken("ops"),
+    body: { name, environment: "prod" },
+  });
+  const globex = await adminToken("ops", OTHER_ISSUER);
+
+  const foreign = await call("GET", `/v1/applications/${application}`, {
+    token: globex,
+  });
+  const missing = await call("GET", `/v1/applications/${unique("no")}-prod`, {
+    token: globex,
+  });
+  assert.equal(foreign.status, 404);
+  assert.deepEqual(
+    [foreign.body.code, foreign.body.message],
+    [missing.body.code, missing.body.message],
+  );
+  const listed = (await call("GET", "/v1/applications", { token: globex })).body
+    .items as { id: string }[];
+  assert.ok(!listed.some((a) => a.id === application));
+  const audit = (await call("GET", "/v1/audit", { token: globex })).body
+    .items as { application?: string }[];
+  assert.ok(!audit.some((e) => e.application === application));
+  const bind = await call("POST", "/v1/workload-bindings", {
+    token: globex,
+    body: { issuer: OTHER_ISSUER, workload: "w", application },
+  });
+  assert.equal(bind.status, 404);
+});
+
+test("an issuer that no organization is configured for gets 401", async () => {
+  const res = await call("GET", "/v1/me", {
+    token: await adminToken("ops", "https://idp.unmapped.test"),
+  });
+  assert.equal(res.status, 401);
+});
+
+test("an end-user token from another organization's issuer is not accepted for a check", async () => {
+  const ops = await adminToken("ops");
+  const name = unique("adm");
+  const application = `${name}-prod`;
+  await call("POST", "/v1/applications", {
+    token: ops,
+    body: { name, environment: "prod" },
+  });
+  await call("POST", "/v1/workload-bindings", {
+    token: ops,
+    body: { issuer: ISSUER, workload: "crm-service", application },
+  });
+  const res = await call("POST", "/v1/check", {
+    token: await token("crm-service"),
+    user: await token("crm-service", "alice", AUDIENCE, OTHER_ISSUER),
+    body: readDoc(application),
+  });
+  assert.equal(res.status, 401);
 });
 
 test("an admin workload's reach does not carry over to the check path", async () => {

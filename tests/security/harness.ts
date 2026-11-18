@@ -159,13 +159,16 @@ export async function proxied(url: string, defaultPort: number) {
   return { proxy, url: parsed.toString().replace(/\/$/, "") };
 }
 
+export const ORGANIZATION = "acme";
+
 export interface FixturePrincipal {
   subject: string;
+  organization?: string;
   scopes: string[];
   applications: string[];
 }
 
-/** Writes fixture token files to a private temp directory. */
+/** Writes fixture token files to a private temp directory; principals default to ORGANIZATION. */
 export function fixtureFiles(
   tokens: Record<string, FixturePrincipal>,
   endUsers: Record<string, string>,
@@ -173,7 +176,13 @@ export function fixtureFiles(
   const dir = mkdtempSync(join(tmpdir(), "authz-security-"));
   const auth = join(dir, "auth.json");
   const users = join(dir, "end-users.json");
-  writeFileSync(auth, JSON.stringify(tokens), { mode: 0o600 });
+  const withOrg = Object.fromEntries(
+    Object.entries(tokens).map(([t, p]) => [
+      t,
+      { organization: ORGANIZATION, ...p },
+    ]),
+  );
+  writeFileSync(auth, JSON.stringify(withOrg), { mode: 0o600 });
   writeFileSync(users, JSON.stringify(endUsers), { mode: 0o600 });
   return {
     env: {
@@ -241,7 +250,12 @@ export const readDoc = (application: string, extra: object = {}) => ({
  * A workload is named by the SHA-256 of `<issuer>|<workload>`, computed here independently of the API.
  */
 export async function adminStore(
-  grants: { issuer: string; workload: string; relation: string }[] = [],
+  grants: {
+    issuer: string;
+    workload: string;
+    relation: string;
+    organization?: string;
+  }[] = [],
 ) {
   const apiUrl = required("OPENFGA_API_URL");
   const { id: storeId } = await new OpenFgaClient({ apiUrl }).createStore({
@@ -270,7 +284,7 @@ export async function adminStore(
           .update(JSON.stringify([g.issuer, g.workload]))
           .digest("hex")}`,
         relation: g.relation,
-        object: "organization:default",
+        object: `organization:${g.organization ?? ORGANIZATION}`,
       })),
     });
   }
