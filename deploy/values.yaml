@@ -41,11 +41,20 @@ networkPolicy:
               kubernetes.io/metadata.name: openfga
       ports:
         - port: 8080
-    # Postgres and the identity provider's JWKS live outside the cluster in most deployments;
-    # narrow these to their addresses.
+    # Postgres usually sits on a private address; narrow this to it.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
       ports:
         - port: 5432
+    # The identity provider's JWKS is public; private ranges stay closed on 443.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+      ports:
         - port: 443
