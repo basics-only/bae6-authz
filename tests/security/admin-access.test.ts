@@ -17,12 +17,12 @@ import {
   unique,
 } from "./harness.js";
 
-// Admin access in OIDC mode (RIZ-051): a workload administers riz only through a role in the
-// riz-admin store, never through the check-only scope every workload gets. Runs the real API with
-// a local issuer; needs RIZ_DATABASE_URL and OPENFGA_API_URL. Real IdPs are unverified.
+// Admin access in OIDC mode (RIZ-051): a workload administers authz only through a role in the
+// bae6-admin store, never through the check-only scope every workload gets. Runs the real API with
+// a local issuer; needs BAE6_DATABASE_URL and OPENFGA_API_URL. Real IdPs are unverified.
 const ISSUER = "https://idp.example.test";
-const AUDIENCE = "riz";
-const ADMIN_AUDIENCE = "riz-admin";
+const AUDIENCE = "authz";
+const ADMIN_AUDIENCE = "bae6-admin";
 
 let idp: Server;
 let api: RunningApi;
@@ -39,15 +39,15 @@ const token = (workload: string, sub = "svc", audience = AUDIENCE) =>
     .setExpirationTime("5m")
     .sign(key);
 
-// What the IdP mints for a service account that administers riz.
+// What the IdP mints for a service account that administers authz.
 const adminToken = (workload: string) => token(workload, "svc", ADMIN_AUDIENCE);
 
 const oidcEnv = () => ({
   OPENFGA_API_URL: required("OPENFGA_API_URL"),
-  RIZ_DATABASE_URL: required("RIZ_DATABASE_URL"),
+  BAE6_DATABASE_URL: required("BAE6_DATABASE_URL"),
   NODE_ENV: "development",
-  RIZ_AUTH_MODE: "oidc",
-  RIZ_OIDC_ISSUERS: JSON.stringify([
+  BAE6_AUTH_MODE: "oidc",
+  BAE6_OIDC_ISSUERS: JSON.stringify([
     {
       issuer: ISSUER,
       audience: AUDIENCE,
@@ -244,8 +244,8 @@ test("admin routes refuse an unauthenticated caller", async () => {
 test("an admin-store outage fails admin routes closed but not unknown paths", async () => {
   const broken = await startApi({
     ...oidcEnv(),
-    RIZ_ADMIN_STORE_ID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-    RIZ_ADMIN_MODEL_ID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    BAE6_ADMIN_STORE_ID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    BAE6_ADMIN_MODEL_ID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
   });
   try {
     const down = client(broken.url);
@@ -267,5 +267,5 @@ test("in oidc mode the API refuses to start without an admin store", async () =>
   const run = await startApiExpectingExit(oidcEnv());
   assert.notEqual(run.code, 0);
   assert.equal(run.listening, false);
-  assert.match(run.output, /RIZ_ADMIN_STORE_ID/);
+  assert.match(run.output, /BAE6_ADMIN_STORE_ID/);
 });

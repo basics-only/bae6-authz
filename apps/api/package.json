@@ -1,5 +1,5 @@
 {
-  "name": "@riz/api",
+  "name": "@bae6/authz-api",
   "version": "0.0.0",
   "private": true,
   "type": "module",

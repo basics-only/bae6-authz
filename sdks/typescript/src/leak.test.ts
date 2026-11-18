@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inspect } from "node:util";
-import { Riz, RizTransportError } from "./index.js";
+import { Authz, AuthzTransportError } from "./index.js";
 
 test("a transport error does not carry the end-user token, even in its cause chain", async () => {
-  const riz = new Riz({
+  const authz = new Authz({
     baseUrl: "http://127.0.0.1:9",
     credentials: "svc-token",
     application: "crm",
   });
   // A newline is an invalid header value, which fetch rejects while quoting it.
-  const err = await riz
+  const err = await authz
     .check({
       action: "read",
       resource: "document:d1",
@@ -18,6 +18,6 @@ test("a transport error does not carry the end-user token, even in its cause cha
     })
     .catch((e: unknown) => e);
 
-  assert.ok(err instanceof RizTransportError);
+  assert.ok(err instanceof AuthzTransportError);
   assert.ok(!inspect(err, { depth: 10 }).includes("SECRET"));
 });

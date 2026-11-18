@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { test } from "node:test";
-import { Riz, RizAuthError } from "../src/index.js";
+import { Authz, AuthzAuthError } from "../src/index.js";
 
 // Runs the SDK against the compose stack (`make up`, then `make integration`).
 // OpenFGA is called directly only to seed a tuple, since the relationships API
@@ -11,7 +11,7 @@ function required(name: string): string {
   if (!value) throw new Error(`${name} is required`);
   return value;
 }
-const api = required("RIZ_API_URL");
+const api = required("BAE6_API_URL");
 const openfga = required("OPENFGA_API_URL");
 
 async function json(res: Response): Promise<Record<string, unknown>> {
@@ -37,7 +37,7 @@ async function applicationWithAlice(): Promise<string> {
     await fetch(`${api}/v1/models?application=${app.id}`, { headers: admin }),
   )) as { items: { id: string; active: boolean }[] };
   const model = models.items.find((m) => m.active);
-  // The store is named after the application ID; the riz API never exposes store IDs.
+  // The store is named after the application ID; the authz API never exposes store IDs.
   const stores = (await json(
     await fetch(`${openfga}/stores?name=${app.id}`),
   )) as { stores: { id: string }[] };
@@ -66,13 +66,13 @@ async function applicationWithAlice(): Promise<string> {
 }
 
 const client = (application: string) =>
-  new Riz({ baseUrl: api, credentials: "dev-check-token", application });
+  new Authz({ baseUrl: api, credentials: "dev-check-token", application });
 
 test("check and batchCheck decide per the application's relationships", async () => {
-  const riz = client(await applicationWithAlice());
+  const authz = client(await applicationWithAlice());
   const endUserToken = "dev-alice-token";
 
-  const read = await riz.check({
+  const read = await authz.check({
     action: "read",
     resource: "document:d1",
     endUserToken,
@@ -80,14 +80,14 @@ test("check and batchCheck decide per the application's relationships", async ()
   assert.equal(read.allowed, true);
   assert.ok(read.modelId);
 
-  const other = await riz.check({
+  const other = await authz.check({
     action: "read",
     resource: "document:d2",
     endUserToken,
   });
   assert.equal(other.allowed, false);
 
-  const batch = await riz.batchCheck(
+  const batch = await authz.batchCheck(
     [
       { action: "read", resource: "document:d1" },
       { action: "read", resource: "document:d2" },
@@ -100,16 +100,16 @@ test("check and batchCheck decide per the application's relationships", async ()
   );
 });
 
-test("check raises an auth error for an end-user token riz does not accept", async () => {
-  const riz = client(await applicationWithAlice());
+test("check raises an auth error for an end-user token authz does not accept", async () => {
+  const authz = client(await applicationWithAlice());
   await assert.rejects(
-    riz.check({
+    authz.check({
       action: "read",
       resource: "document:d1",
       endUserToken: "not-a-known-token",
     }),
     (err: unknown) =>
-      err instanceof RizAuthError &&
+      err instanceof AuthzAuthError &&
       err.status === 401 &&
       err.code === "invalid_end_user_token",
   );

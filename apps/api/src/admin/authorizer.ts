@@ -22,7 +22,7 @@ const SUBJECT = /^[A-Za-z0-9._@+-]{1,128}$/;
 const APPLICATION_ID = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
- * Decides who may administer riz itself, against the riz-admin store at a pinned
+ * Decides who may administer authz itself, against the bae6-admin store at a pinned
  * model. Separate from application checks: it never touches an application's store.
  * Fails closed: an OpenFGA outage is a 503, never an allow.
  */

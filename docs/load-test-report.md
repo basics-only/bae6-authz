@@ -7,7 +7,7 @@ Question: where does a check spend its time, and is a cache (RIZ-036) justified?
 Needs a running stack (Postgres, OpenFGA, the API). Fixture tokens are the dev-only values.
 
 ```
-RIZ_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8081 pnpm --filter @riz/load load
+BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8081 pnpm --filter @bae6/authz-load load
 ```
 
 `tests/load/run.ts` registers a fresh application, seeds one allow and one deny, then drives
@@ -26,7 +26,7 @@ datastore, reached through Docker's published port. Load generator on the same m
 
 ## Results
 
-riz, one process (run 2; OpenFGA freshly restarted before it):
+bae6-authz, one process (run 2; OpenFGA freshly restarted before it):
 
 | scenario | connections | req/s | p50 ms | p97.5 ms | p99 ms | max ms | failed |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -52,18 +52,18 @@ The same checks sent directly to OpenFGA, measured separately on a freshly resta
 | check (OpenFGA direct) | 16 | 1527 | 7 | 31 | 40 | 93 | 0 |
 | check (OpenFGA direct) | 64 | 3024 | 17 | 55 | 79 | 213 | 0 |
 
-An earlier full run on the same machine peaked higher for riz (check 732 req/s at 16
+An earlier full run on the same machine peaked higher for bae6-authz (check 732 req/s at 16
 connections, p99 59 ms; batch 770 req/s) and then degraded. Run-to-run variance is large:
 treat figures as ±2x.
 
 ## What it shows
 
-- **Saturation.** One riz process tops out around 400–750 req/s for single checks, at 4–16
+- **Saturation.** One bae6-authz process tops out around 400–750 req/s for single checks, at 4–16
   connections. Beyond that, throughput does not rise and latency climbs (check p99 above 1 s
   at 64 connections in run 2). No request failed in any step.
-- **riz, not OpenFGA, is the slower layer in this setup.** Through the same OpenFGA, checks
-  sent directly ran at 1.4–3 k req/s with p50 0–17 ms, several times what riz sustained.
-  riz adds one Postgres lookup per request (the application's store and pinned model,
+- **bae6-authz, not OpenFGA, is the slower layer in this setup.** Through the same OpenFGA, checks
+  sent directly ran at 1.4–3 k req/s with p50 0–17 ms, several times what bae6-authz sustained.
+  bae6-authz adds one Postgres lookup per request (the application's store and pinned model,
   `checks/resolver.ts`) and builds a new OpenFGA client per request. That fits the gap but
   was not profiled, so it is a likely cause, not a proven one.
 - **A batch of 10 costs about the same as one check** at equal connection counts, so batching
@@ -73,7 +73,7 @@ treat figures as ±2x.
 
 - OpenFGA's host-published port stopped answering after sustained load, with OpenFGA itself
   idle, until the container was restarted. That is probably Docker Desktop's port forwarding,
-  not OpenFGA. It also means the first direct-OpenFGA attempt measured nothing, and riz's
+  not OpenFGA. It also means the first direct-OpenFGA attempt measured nothing, and bae6-authz's
   numbers include that forwarding path. A Linux run (CI or a server) is needed before
   trusting absolute figures. **Unverified.**
 - Identical requests repeat, so OpenFGA's own result caching may flatter the direct numbers.
@@ -85,7 +85,7 @@ treat figures as ±2x.
 
 A cache of the **application binding** (application to store and pinned model) is worth
 building: it removes a database round trip from every check and is the largest piece of
-riz's own work visible here. Re-measure after it, on Linux, before going further.
+bae6-authz's own work visible here. Re-measure after it, on Linux, before going further.
 
 A cache of **decisions** is not justified by this data and would delay revocation; do not
 build it unless a Linux run with a realistic user/object mix shows OpenFGA itself saturating.

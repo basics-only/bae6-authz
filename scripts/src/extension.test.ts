@@ -9,7 +9,7 @@ import { validateExtension, writeExtension } from "./extension.js";
 const modelsDir = resolve(import.meta.dirname, "../../models/openfga");
 
 function extensionDir(extension: string, tests?: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "riz-ext-"));
+  const dir = mkdtempSync(join(tmpdir(), "authz-ext-"));
   writeFileSync(join(dir, "extension.fga"), extension);
   writeFileSync(
     join(dir, "extension.tests.yaml"),
@@ -71,7 +71,7 @@ tests: []
 });
 
 test("rejects an extension with no tests file", () => {
-  const dir = mkdtempSync(join(tmpdir(), "riz-ext-"));
+  const dir = mkdtempSync(join(tmpdir(), "authz-ext-"));
   writeFileSync(join(dir, "extension.fga"), "type folder\n");
   assert.throws(
     () => validateExtension(join(dir, "extension.fga")),
@@ -131,7 +131,7 @@ type folder
 });
 
 test("rejects an extension when the core suite fails", () => {
-  const dir = mkdtempSync(join(tmpdir(), "riz-core-"));
+  const dir = mkdtempSync(join(tmpdir(), "authz-core-"));
   // A core suite expecting members to be admins, which this core model denies.
   writeFileSync(
     join(dir, "core.fga"),

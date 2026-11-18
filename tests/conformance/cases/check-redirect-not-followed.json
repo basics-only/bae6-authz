@@ -17,6 +17,6 @@
   },
   "nonconformingResponse": true,
   "expect": {
-    "error": { "type": "RizApiError", "status": 302 }
+    "error": { "type": "AuthzApiError", "status": 302 }
   }
 }

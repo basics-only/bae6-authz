@@ -1,28 +1,28 @@
 import { randomBytes } from "node:crypto";
 import autocannon from "autocannon";
 
-// Load run against a running stack: RIZ_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8081
-//   pnpm --filter @riz/load load
+// Load run against a running stack: BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8081
+//   pnpm --filter @bae6/authz-load load
 // Prints a markdown table. Fixture tokens are the dev-only values in deploy/fixtures.
 function required(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);
   return value;
 }
-const api = required("RIZ_API_URL");
+const api = required("BAE6_API_URL");
 const openfga = required("OPENFGA_API_URL");
 const seconds = Number(process.env.LOAD_SECONDS ?? 10);
 const steps = (process.env.LOAD_CONNECTIONS ?? "1,4,16,64")
   .split(",")
   .map(Number);
 
-const riz = (token: string) => ({
+const authz = (token: string) => ({
   authorization: `Bearer ${token}`,
   "content-type": "application/json",
 });
 const CHECK_HEADERS = {
-  ...riz("dev-check-token"),
-  "riz-end-user-token": "dev-alice-token",
+  ...authz("dev-check-token"),
+  "bae6-end-user-token": "dev-alice-token",
 };
 
 async function json(res: Response) {
@@ -34,14 +34,14 @@ const name = `ld${randomBytes(6).toString("hex")}`;
 const created = await json(
   await fetch(`${api}/v1/applications`, {
     method: "POST",
-    headers: riz("dev-admin-token"),
+    headers: authz("dev-admin-token"),
     body: JSON.stringify({ name, environment: "prod" }),
   }),
 );
 const app = created.id as string;
 const granted = await fetch(`${api}/v1/relationships`, {
   method: "POST",
-  headers: riz("dev-admin-token"),
+  headers: authz("dev-admin-token"),
   body: JSON.stringify({
     application: app,
     relationships: [
@@ -88,9 +88,9 @@ const scenarios: Record<
   string,
   { base: string; requests: ReturnType<typeof post>[] }
 > = {
-  "check (riz)": { base: api, requests: single },
-  "batch-check x10 (riz)": { base: api, requests: [batch] },
-  "mixed 9:1 (riz)": {
+  "check (authz)": { base: api, requests: single },
+  "batch-check x10 (authz)": { base: api, requests: [batch] },
+  "mixed 9:1 (authz)": {
     base: api,
     requests: [
       ...single,

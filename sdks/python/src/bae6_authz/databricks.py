@@ -10,12 +10,12 @@ from dataclasses import dataclass
 
 import httpx
 
-from riz.client import RizError
+from bae6_authz.client import AuthzError
 
 # Databricks Apps forwards the signed-in user's token in this header.
 FORWARDED_TOKEN_HEADER = "x-forwarded-access-token"
 
-# The same shape the riz API accepts: a bare lower-case host, so no scheme, port, path or
+# The same shape the authz API accepts: a bare lower-case host, so no scheme, port, path or
 # userinfo rides along. shortcut: any DNS name passes, so the caller must trust where the
 # host comes from; restrict to Databricks suffixes or an allow-list if it is ever untrusted.
 _HOST = re.compile(
@@ -24,11 +24,11 @@ _HOST = re.compile(
 _DENIED_CODES = {"PERMISSION_DENIED", "UNAUTHENTICATED"}
 
 
-class MissingUserCredentialError(RizError):
+class MissingUserCredentialError(AuthzError):
     """No delegated user token was available. Nothing was sent to Databricks."""
 
 
-class DatabricksError(RizError):
+class DatabricksError(AuthzError):
     """Databricks did not return a result."""
 
     def __init__(self, status: int, code: str | None, message: str) -> None:

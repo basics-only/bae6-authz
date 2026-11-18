@@ -2,6 +2,11 @@
 
 Reviewed 2026-11-01 for RIZ-044.
 
+Names superseded 2026-11-17: riz became bae6-authz (bae6-contracts ADR-0003). The packages are
+now `@bae6/authz` (npm) and `bae6-authz` (PyPI, import `bae6_authz`); both returned 404 on
+2026-11-17, and the `@bae6` npm scope is still unclaimed. The license and dependency findings
+below still hold.
+
 ## Decision
 
 - riz ships under **Apache-2.0** (`LICENSE`, unmodified standard text). No `NOTICE` file:

@@ -146,7 +146,9 @@ export function checkRoutes(deps: {
     if (!principal.scopes.includes("check")) {
       throw new HttpError(403, "forbidden", "Missing scope check.");
     }
-    const header = req.headers["riz-end-user-token"];
+    // Riz-End-User-Token is still accepted until the next major (bae6-contracts ADR-0003).
+    const header =
+      req.headers["bae6-end-user-token"] ?? req.headers["riz-end-user-token"];
     const endUser = await deps.verifyEndUser(
       typeof header === "string" ? header : undefined,
       principal,

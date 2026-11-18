@@ -7,14 +7,14 @@ from typing import Literal, Self
 import httpx
 
 
-class RizError(Exception):
+class AuthzError(Exception):
     def __init__(self, message: str, request_id: str | None = None) -> None:
         super().__init__(message)
         self.request_id = request_id
 
 
-class RizApiError(RizError):
-    """riz answered with something other than a decision."""
+class AuthzApiError(AuthzError):
+    """authz answered with something other than a decision."""
 
     def __init__(
         self, status: int, code: str | None, message: str, request_id: str | None = None
@@ -24,28 +24,28 @@ class RizApiError(RizError):
         self.code = code
 
 
-class RizAuthError(RizApiError):
+class AuthzAuthError(AuthzApiError):
     """401 or 403: bad workload or end-user credentials, or a missing scope."""
 
 
-class RizValidationError(RizApiError):
-    """400: riz rejected the request."""
+class AuthzValidationError(AuthzApiError):
+    """400: authz rejected the request."""
 
 
-class RizIndeterminateError(RizError):
-    """riz could not decide (for example its authorization backend timed out)."""
+class AuthzIndeterminateError(AuthzError):
+    """authz could not decide (for example its authorization backend timed out)."""
 
     def __init__(self, code: str | None, request_id: str) -> None:
         detail = f" ({code})" if code else ""
-        super().__init__(f"riz could not decide{detail}; treat as denied", request_id)
+        super().__init__(f"authz could not decide{detail}; treat as denied", request_id)
         self.code = code
 
 
-class RizTransportError(RizError):
-    """riz was not reached or did not answer."""
+class AuthzTransportError(AuthzError):
+    """authz was not reached or did not answer."""
 
 
-class RizTimeoutError(RizTransportError):
+class AuthzTimeoutError(AuthzTransportError):
     pass
 
 
@@ -86,25 +86,25 @@ def _str(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _http_error(status: int, parsed: object) -> RizApiError:
+def _http_error(status: int, parsed: object) -> AuthzApiError:
     body = parsed if isinstance(parsed, dict) else {}
     error_type = (
-        RizValidationError
+        AuthzValidationError
         if status == 400
-        else RizAuthError
+        else AuthzAuthError
         if status in (401, 403)
-        else RizApiError
+        else AuthzApiError
     )
     return error_type(
         status,
         _str(body.get("code")),
-        _str(body.get("message")) or f"riz returned HTTP {status}",
+        _str(body.get("message")) or f"authz returned HTTP {status}",
         _str(body.get("requestId")),
     )
 
 
-def _invalid_response() -> RizApiError:
-    return RizApiError(200, "invalid_response", "riz returned an unusable response")
+def _invalid_response() -> AuthzApiError:
+    return AuthzApiError(200, "invalid_response", "authz returned an unusable response")
 
 
 def _item_decision(status: str | None) -> ItemDecision:
@@ -116,8 +116,8 @@ def _item_decision(status: str | None) -> ItemDecision:
     return ItemDecision(False, "deny")
 
 
-class Riz:
-    """Async riz client. Use `async with Riz(...) as riz` so connections are closed."""
+class Authz:
+    """Async authz client. Use `async with Authz(...) as authz` so connections are closed."""
 
     def __init__(
         self, base_url: str, credentials: str, application: str, timeout: float = 5.0
@@ -158,8 +158,8 @@ class Riz:
         """Whether the end user holds `action` on `resource`.
 
         `consistency="higher_consistency"` sees revocations already committed, at more cost;
-        unset uses riz's default, `minimize_latency`, which may serve a briefly cached answer.
-        Raises RizIndeterminateError when riz cannot decide; never returns allow then.
+        unset uses authz's default, `minimize_latency`, which may serve a briefly cached answer.
+        Raises AuthzIndeterminateError when authz cannot decide; never returns allow then.
         """
         payload: dict[str, object] = {
             "application": self._application,
@@ -174,7 +174,7 @@ class Riz:
         if status is None or request_id is None:
             raise _invalid_response()
         if status == "indeterminate":
-            raise RizIndeterminateError(_str(body.get("code")), request_id)
+            raise AuthzIndeterminateError(_str(body.get("code")), request_id)
         allowed = status == "allow"
         return Decision(
             allowed=allowed,
@@ -190,7 +190,7 @@ class Riz:
         end_user_token: str,
         consistency: Consistency | None = None,
     ) -> BatchDecision:
-        """At most 100 checks (riz may allow fewer). An indeterminate item does not affect the rest.
+        """At most 100 checks (authz may allow fewer). An indeterminate item does not affect the rest.
 
         `consistency` applies to every check in the batch, as in `check`.
         """
@@ -226,13 +226,13 @@ class Riz:
         try:
             async with asyncio.timeout(self._timeout):
                 response = await self._http.post(
-                    path, json=payload, headers={"riz-end-user-token": end_user_token}
+                    path, json=payload, headers={"bae6-end-user-token": end_user_token}
                 )
         except TimeoutError as e:
-            raise RizTimeoutError(f"riz did not answer within {self._timeout} s") from e
+            raise AuthzTimeoutError(f"authz did not answer within {self._timeout} s") from e
         except httpx.HTTPError as e:
             # No chained cause: it can quote a header value, i.e. the end-user token.
-            raise RizTransportError(f"could not reach riz ({type(e).__name__})") from None
+            raise AuthzTransportError(f"could not reach authz ({type(e).__name__})") from None
         try:
             parsed: object = response.json()
         except ValueError:

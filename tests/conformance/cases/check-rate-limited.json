@@ -20,7 +20,7 @@
   },
   "expect": {
     "error": {
-      "type": "RizApiError",
+      "type": "AuthzApiError",
       "status": 429,
       "code": "rate_limited",
       "requestId": "req_9"

@@ -18,7 +18,7 @@ import {
 // Outage and fail-closed behaviour (RIZ-041): OpenFGA or Postgres severed (connections refused
 // at once) or blackholed (accepted, never answered) must never produce an allow. The faults
 // are injected by a TCP proxy in front of each dependency (harness.ts), so a replica's network
-// partition from OpenFGA is the same fault as `drop`. Needs RIZ_DATABASE_URL and OPENFGA_API_URL.
+// partition from OpenFGA is the same fault as `drop`. Needs BAE6_DATABASE_URL and OPENFGA_API_URL.
 // Not covered here: a partial batch failure needs OpenFGA to answer some items and not others,
 // which a real OpenFGA will not do on demand; it is covered with a stub in
 // apps/api/src/checks/check.test.ts ("a failed or missing batch item is indeterminate ...").
@@ -54,15 +54,15 @@ before(async () => {
   );
   dispose = files.dispose;
   const fgaUrl = await proxied(required("OPENFGA_API_URL"), 80);
-  const pgUrl = await proxied(required("RIZ_DATABASE_URL"), 5432);
+  const pgUrl = await proxied(required("BAE6_DATABASE_URL"), 5432);
   fga = fgaUrl.proxy;
   postgres = pgUrl.proxy;
   api = await startApi({
     ...files.env,
     OPENFGA_API_URL: fgaUrl.url,
-    RIZ_DATABASE_URL: pgUrl.url,
-    RIZ_CHECK_TIMEOUT_MS: String(TIMEOUT_MS),
-    RIZ_READY_TIMEOUT_MS: String(TIMEOUT_MS),
+    BAE6_DATABASE_URL: pgUrl.url,
+    BAE6_CHECK_TIMEOUT_MS: String(TIMEOUT_MS),
+    BAE6_READY_TIMEOUT_MS: String(TIMEOUT_MS),
   });
   call = client(api.url);
 

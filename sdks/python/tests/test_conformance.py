@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from riz import Check, Riz, RizError
+from bae6_authz import Check, Authz, AuthzError
 
 CASES = sorted((Path(__file__).parents[3] / "tests/conformance/cases").glob("*.json"))
 BEARER = "svc-token"
@@ -94,9 +94,9 @@ async def _invoke(case: dict[str, Any], base_url: str) -> object:
     call = case["call"]
     timeout = case.get("client", {}).get("timeoutMs", 2000) / 1000
     consistency = call.get("consistency")
-    async with Riz(base_url, BEARER, "crm", timeout=timeout) as riz:
+    async with Authz(base_url, BEARER, "crm", timeout=timeout) as authz:
         if call["operation"] == "check":
-            return await riz.check(
+            return await authz.check(
                 action=call["action"],
                 resource=call["resource"],
                 end_user_token=call["endUserToken"],
@@ -107,7 +107,7 @@ async def _invoke(case: dict[str, Any], base_url: str) -> object:
             for c in call["checks"]
             for _ in range(c.get("count", 1))
         ]
-        return await riz.batch_check(
+        return await authz.batch_check(
             checks, end_user_token=call["endUserToken"], consistency=consistency
         )
 
@@ -117,12 +117,12 @@ def test_conformance_case(path: Path) -> None:
     case = json.loads(path.read_text())
     server, received = _serve(case)
     result: object = None
-    error: RizError | None = None
+    error: AuthzError | None = None
     try:
         base_url = f"http://127.0.0.1:{server.server_address[1]}"
         try:
             result = asyncio.run(_invoke(case, base_url))
-        except RizError as e:
+        except AuthzError as e:
             error = e
     finally:
         server.shutdown()
@@ -130,12 +130,12 @@ def test_conformance_case(path: Path) -> None:
 
     expected_request = case["expectRequest"]
     end_user_token = case["call"]["endUserToken"]
-    assert len(received) == 1, "exactly one request reaches riz"
+    assert len(received) == 1, "exactly one request reaches authz"
     request = received[0]
     assert request["method"] == expected_request["method"]
     assert request["path"] == expected_request["path"]
     assert request["headers"]["authorization"] == f"Bearer {BEARER}"
-    assert request["headers"]["riz-end-user-token"] == end_user_token
+    assert request["headers"]["bae6-end-user-token"] == end_user_token
     assert request["headers"]["content-type"].startswith("application/json")
     if "body" in expected_request:
         assert json.loads(request["body"]) == expected_request["body"]

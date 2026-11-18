@@ -1,35 +1,35 @@
-# riz console. It keeps sessions in memory (docs/decisions/0006-console-session.md), so it runs
+# authz console. It keeps sessions in memory (docs/decisions/0006-console-session.md), so it runs
 # as ONE replica: a second would not know the first's sessions. shortcut: one replica and no
 # PodDisruptionBudget; move sessions to shared storage before scaling it.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: riz-console
-  namespace: riz
+  name: bae6-authz-console
+  namespace: bae6-authz
 data:
   PORT: "3000"
-  RIZ_API_URL: http://riz-api.riz.svc.cluster.local
+  BAE6_API_URL: http://bae6-authz-api.authz.svc.cluster.local
   # Replace with your identity provider and the console's public address.
   OIDC_ISSUER: https://idp.example.invalid/
-  OIDC_CLIENT_ID: riz-console
-  OIDC_REDIRECT_URI: https://riz-console.example.invalid/auth/callback
+  OIDC_CLIENT_ID: bae6-authz-console
+  OIDC_REDIRECT_URI: https://bae6-authz-console.example.invalid/auth/callback
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: riz-console
-  namespace: riz
+  name: bae6-authz-console
+  namespace: bae6-authz
   labels:
-    app.kubernetes.io/name: riz-console
+    app.kubernetes.io/name: bae6-authz-console
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: riz-console
+      app.kubernetes.io/name: bae6-authz-console
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: riz-console
+        app.kubernetes.io/name: bae6-authz-console
     spec:
       securityContext:
         runAsNonRoot: true
@@ -39,20 +39,20 @@ spec:
       containers:
         - name: console
           # Build and publish this image yourself (deploy/console.Dockerfile).
-          image: riz-console:local
+          image: bae6-authz-console:local
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 3000
           envFrom:
             - configMapRef:
-                name: riz-console
+                name: bae6-authz-console
           env:
             # Optional: only a confidential OIDC client has one.
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: riz-console
+                  name: bae6-authz-console
                   key: oidc-client-secret
                   optional: true
           # The console has no health route, so probes check that it accepts connections.
@@ -79,11 +79,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: riz-console
-  namespace: riz
+  name: bae6-authz-console
+  namespace: bae6-authz
 spec:
   selector:
-    app.kubernetes.io/name: riz-console
+    app.kubernetes.io/name: bae6-authz-console
   ports:
     - name: http
       port: 80

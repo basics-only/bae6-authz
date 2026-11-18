@@ -48,7 +48,7 @@ export async function fga<T>(
 
 /**
  * Tuples live only in the application's OpenFGA store, written at its pinned model, which
- * is also what validates them: riz keeps no copy and no second validator.
+ * is also what validates them: authz keeps no copy and no second validator.
  */
 export function createRelationshipService(deps: {
   pool: pg.Pool;

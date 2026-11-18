@@ -1,5 +1,5 @@
 {
-  "name": "check raises a validation error when riz rejects the request",
+  "name": "check raises a validation error when authz rejects the request",
   "call": {
     "operation": "check",
     "endUserToken": "alice-token",
@@ -20,7 +20,7 @@
   },
   "expect": {
     "error": {
-      "type": "RizValidationError",
+      "type": "AuthzValidationError",
       "status": 400,
       "code": "invalid_request",
       "requestId": "req_7"

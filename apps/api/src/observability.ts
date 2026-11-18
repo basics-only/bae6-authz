@@ -24,28 +24,28 @@ import {
 
 // The tracing API hands out proxies that start recording once a provider is registered; the
 // metrics API does not, so instruments are created by registerMetrics and are absent until then.
-const tracer = trace.getTracer("riz-api");
+const tracer = trace.getTracer("bae6-authz-api");
 
 const SECONDS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5];
 
 function createInstruments(provider: MeterProvider) {
-  const meter = provider.getMeter("riz-api");
+  const meter = provider.getMeter("bae6-authz-api");
   return {
-    requestDuration: meter.createHistogram("riz.http.server.duration", {
+    requestDuration: meter.createHistogram("authz.http.server.duration", {
       unit: "s",
       description:
         "Request duration by route and status; its count is the request rate.",
       advice: { explicitBucketBoundaries: SECONDS },
     }),
-    decisions: meter.createCounter("riz.check.decisions", {
+    decisions: meter.createCounter("authz.check.decisions", {
       description: "Check outcomes (a batch counts each item).",
     }),
-    openfgaDuration: meter.createHistogram("riz.openfga.duration", {
+    openfgaDuration: meter.createHistogram("authz.openfga.duration", {
       unit: "s",
       description: "Time spent in OpenFGA calls.",
       advice: { explicitBucketBoundaries: SECONDS },
     }),
-    batchSize: meter.createHistogram("riz.batch.size", {
+    batchSize: meter.createHistogram("authz.batch.size", {
       description: "Checks per batch request.",
       advice: { explicitBucketBoundaries: [1, 5, 10, 25, 50, 100] },
     }),
@@ -99,7 +99,7 @@ export function observeRequest(
       attributes: {
         "http.request.method": method,
         "http.route": route,
-        "riz.request_id": info.requestId,
+        "authz.request_id": info.requestId,
       },
     },
     parent,
@@ -168,7 +168,7 @@ export function recordBatchSize(size: number): void {
   instruments?.batchSize.record(size);
 }
 
-const resource = resourceFromAttributes({ "service.name": "riz-api" });
+const resource = resourceFromAttributes({ "service.name": "bae6-authz-api" });
 
 /** Installs the global tracer, W3C propagator and async context for `spanProcessors`. */
 export function registerTracing(
@@ -192,8 +192,8 @@ export function registerMetrics(readers: MetricReader[]): MeterProvider {
 /**
  * Turns on what the environment asks for:
  * - `OTEL_EXPORTER_OTLP_ENDPOINT` (standard OpenTelemetry variable): export traces over OTLP/HTTP.
- * - `RIZ_METRICS_PORT`: serve Prometheus metrics on a separate, unauthenticated port, bound to
- *   `RIZ_METRICS_HOST` (default 127.0.0.1). Never expose that port beyond the monitoring network.
+ * - `BAE6_METRICS_PORT`: serve Prometheus metrics on a separate, unauthenticated port, bound to
+ *   `BAE6_METRICS_HOST` (default 127.0.0.1). Never expose that port beyond the monitoring network.
  */
 export function setupObservability(env: NodeJS.ProcessEnv): void {
   if (env.OTEL_EXPORTER_OTLP_ENDPOINT) {
@@ -201,15 +201,15 @@ export function setupObservability(env: NodeJS.ProcessEnv): void {
       new BatchSpanProcessor({ exporter: new OTLPTraceExporter() }),
     ]);
   }
-  if (env.RIZ_METRICS_PORT) {
-    const port = Number(env.RIZ_METRICS_PORT);
+  if (env.BAE6_METRICS_PORT) {
+    const port = Number(env.BAE6_METRICS_PORT);
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      throw new Error("RIZ_METRICS_PORT must be an integer from 1 to 65535");
+      throw new Error("BAE6_METRICS_PORT must be an integer from 1 to 65535");
     }
     registerMetrics([
       new PrometheusExporter({
         port,
-        host: env.RIZ_METRICS_HOST || "127.0.0.1",
+        host: env.BAE6_METRICS_HOST || "127.0.0.1",
       }),
     ]);
   }

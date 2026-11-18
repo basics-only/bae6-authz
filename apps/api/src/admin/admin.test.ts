@@ -14,10 +14,10 @@ import { adminRoutes } from "./routes.js";
 import { createAdminService } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 const ALL = [

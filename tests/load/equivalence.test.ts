@@ -4,11 +4,11 @@ import { test } from "node:test";
 
 // Black-box suite against N API replicas behind a load balancer that tags each response with
 // the replica that served it: `docker compose --profile replicas up -d --build --wait lb`,
-// then `pnpm --filter @riz/api test:replicas` with RIZ_LB_URL=http://localhost:8090.
+// then `pnpm --filter @bae6/authz-api test:replicas` with BAE6_LB_URL=http://localhost:8090.
 // Fixture tokens are the dev-only values in deploy/fixtures.
-const lb = process.env.RIZ_LB_URL;
-if (!lb) throw new Error("RIZ_LB_URL is required");
-const minReplicas = Number(process.env.RIZ_REPLICAS ?? 2);
+const lb = process.env.BAE6_LB_URL;
+if (!lb) throw new Error("BAE6_LB_URL is required");
+const minReplicas = Number(process.env.BAE6_REPLICAS ?? 2);
 
 const ADMIN = "dev-admin-token";
 const CHECK = "dev-check-token";
@@ -26,7 +26,7 @@ async function call(
     method,
     headers: {
       ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}),
-      ...(opts.user ? { "riz-end-user-token": opts.user } : {}),
+      ...(opts.user ? { "bae6-end-user-token": opts.user } : {}),
       "content-type": "application/json",
     },
     ...(opts.body === undefined ? {} : { body: JSON.stringify(opts.body) }),
@@ -37,7 +37,7 @@ async function call(
   return {
     status: res.status,
     body,
-    replica: res.headers.get("x-riz-replica"),
+    replica: res.headers.get("x-authz-replica"),
   };
 }
 

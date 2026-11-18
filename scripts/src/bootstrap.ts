@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { OpenFgaClient } from "@openfga/sdk";
 import { writeModel } from "./model.js";
 
-export const ADMIN_STORE_NAME = "riz-admin";
+export const ADMIN_STORE_NAME = "bae6-admin";
 
 /**
  * A workload's name in the admin store: the API keys it by the SHA-256 of the JSON pair
@@ -18,7 +18,7 @@ export const workloadSubject = (issuer: string, workload: string) =>
 const SUBJECT = /^[A-Za-z0-9._@+-]{1,128}$/;
 
 /**
- * Creates riz's own admin store, writes the admin model and makes `admin` the
+ * Creates authz's own admin store, writes the admin model and makes `admin` the
  * first security admin. The subject is supplied by the operator; nothing is
  * hardcoded. Refuses to run twice, so it cannot silently create a second store.
  */

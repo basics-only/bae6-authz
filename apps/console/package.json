@@ -1,5 +1,5 @@
 {
-  "name": "@riz/console",
+  "name": "@bae6/authz-console",
   "version": "0.0.0",
   "private": true,
   "type": "module",

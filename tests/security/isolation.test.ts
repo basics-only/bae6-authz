@@ -13,7 +13,7 @@ import {
 } from "./harness.js";
 
 // Privilege escalation and tenant isolation (RIZ-039): applications and admins stay in their lanes.
-// Needs Postgres and OpenFGA: RIZ_DATABASE_URL and OPENFGA_API_URL.
+// Needs Postgres and OpenFGA: BAE6_DATABASE_URL and OPENFGA_API_URL.
 const openfga = required("OPENFGA_API_URL");
 
 const nameA = unique("seca");
@@ -83,7 +83,7 @@ before(async () => {
   api = await startApi({
     ...files.env,
     OPENFGA_API_URL: openfga,
-    RIZ_DATABASE_URL: required("RIZ_DATABASE_URL"),
+    BAE6_DATABASE_URL: required("BAE6_DATABASE_URL"),
   });
   call = client(api.url);
   for (const name of [nameA, nameB]) {

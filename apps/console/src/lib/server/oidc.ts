@@ -6,7 +6,7 @@ export interface OidcConfig {
   clientId: string;
   clientSecret?: string;
   redirectUri: string;
-  /** Audience of the access token the riz API accepts, when it differs from the client. */
+  /** Audience of the access token the authz API accepts, when it differs from the client. */
   audience?: string;
 }
 

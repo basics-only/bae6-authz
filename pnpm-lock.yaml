@@ -115,7 +115,7 @@ importers:
 
   examples/express:
     dependencies:
-      '@riz/sdk':
+      '@bae6/authz':
         specifier: workspace:*
         version: link:../../sdks/typescript
       express:

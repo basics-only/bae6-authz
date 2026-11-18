@@ -17,7 +17,7 @@ const SECURITY_ADMIN = [
 ];
 
 /**
- * A workload's name in the riz-admin store. An issuer URL holds `:` and `/`, which cannot be
+ * A workload's name in the bae6-admin store. An issuer URL holds `:` and `/`, which cannot be
  * an OpenFGA user ID, so the store is keyed by the SHA-256 of the JSON pair (JSON, so no
  * separator inside either value can make two pairs collide).
  */
@@ -27,7 +27,7 @@ export const adminSubject = (issuer: string, workload: string) =>
     .digest("hex");
 
 /**
- * Adds the admin scopes a workload holds in the riz-admin store, on all applications.
+ * Adds the admin scopes a workload holds in the bae6-admin store, on all applications.
  * Only organization roles are read: an application-level admin gets no scopes yet, since
  * scopes are global and could not keep it to its own application.
  * For admin routes only. The check path must never wait on the admin store.

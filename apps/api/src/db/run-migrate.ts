@@ -1,9 +1,9 @@
 import pg from "pg";
 import { migrate } from "./migrate.js";
 
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 if (!url) {
-  throw new Error("RIZ_DATABASE_URL is required");
+  throw new Error("BAE6_DATABASE_URL is required");
 }
 
 const client = new pg.Client({ connectionString: url });

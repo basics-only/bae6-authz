@@ -6,7 +6,7 @@ import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
 import { oidcTokenVerifier, type TokenVerifier } from "./oidc.js";
 
 const ISSUER = "https://idp.example.test";
-const AUDIENCE = "riz";
+const AUDIENCE = "authz";
 
 let server: Server;
 let verify: TokenVerifier;
@@ -27,7 +27,12 @@ before(async () => {
   const jwksUri = `http://127.0.0.1:${port}/jwks`;
   verify = oidcTokenVerifier([{ issuer: ISSUER, audience: AUDIENCE, jwksUri }]);
   verifyWithAdmin = oidcTokenVerifier([
-    { issuer: ISSUER, audience: AUDIENCE, adminAudience: "riz-admin", jwksUri },
+    {
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      adminAudience: "bae6-admin",
+      jwksUri,
+    },
   ]);
 });
 
@@ -65,11 +70,11 @@ test("accepts a valid token and returns its issuer and subject", async () => {
 test("marks a token as admin only when it carries the admin audience", async () => {
   assert.equal((await verifyWithAdmin(await sign()))?.admin, false);
   assert.equal(
-    (await verifyWithAdmin(await sign({ aud: "riz-admin" })))?.admin,
+    (await verifyWithAdmin(await sign({ aud: "bae6-admin" })))?.admin,
     true,
   );
   // Without an adminAudience configured, no token is ever admin.
-  assert.equal(await verify(await sign({ aud: "riz-admin" })), null);
+  assert.equal(await verify(await sign({ aud: "bae6-admin" })), null);
   assert.notEqual((await verify(await sign()))?.admin, true);
 });
 

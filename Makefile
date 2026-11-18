@@ -26,16 +26,16 @@ test:
 
 model-test:
 	docker run --rm -v "$(CURDIR)/models/openfga:/models:ro" $(FGA_CLI) model test --tests /models/tests.yaml
-	docker run --rm -v "$(CURDIR)/models/openfga:/models:ro" $(FGA_CLI) model test --tests /models/riz-admin.tests.yaml
+	docker run --rm -v "$(CURDIR)/models/openfga:/models:ro" $(FGA_CLI) model test --tests /models/bae6-admin.tests.yaml
 
-# Needs RIZ_DATABASE_URL (see .env.example) and `make up` Postgres running.
+# Needs BAE6_DATABASE_URL (see .env.example) and `make up` Postgres running.
 migrate:
-	pnpm --filter @riz/api migrate
+	pnpm --filter @bae6/authz-api migrate
 
 # Black-box API and SDK tests against the compose stack; needs `make up` first.
 integration:
-	RIZ_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8081 pnpm --filter @riz/api test:integration
-	RIZ_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8081 pnpm --filter @riz/sdk test:integration
+	BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8081 pnpm --filter @bae6/authz-api test:integration
+	BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8081 pnpm --filter @bae6/authz test:integration
 
 up:
 	$(COMPOSE) up --build -d --wait

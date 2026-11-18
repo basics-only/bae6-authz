@@ -39,11 +39,11 @@ if (command === "bootstrap-admin") {
     process.exit(2);
   }
   const { storeId, modelId } = await bootstrapAdmin(
-    resolve(import.meta.dirname, "../../models/openfga/riz-admin.fga"),
+    resolve(import.meta.dirname, "../../models/openfga/bae6-admin.fga"),
     { apiUrl, admin },
   );
-  console.log(`RIZ_ADMIN_STORE_ID=${storeId}`);
-  console.log(`RIZ_ADMIN_MODEL_ID=${modelId}`);
+  console.log(`BAE6_ADMIN_STORE_ID=${storeId}`);
+  console.log(`BAE6_ADMIN_MODEL_ID=${modelId}`);
   process.exit(0);
 }
 

@@ -20,7 +20,7 @@
   },
   "expect": {
     "error": {
-      "type": "RizAuthError",
+      "type": "AuthzAuthError",
       "status": 401,
       "code": "invalid_end_user_token",
       "requestId": "req_5"

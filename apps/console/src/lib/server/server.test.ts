@@ -9,7 +9,7 @@ import { crossSiteMutation, loginRedirect } from "./guard.js";
 import { discover, finishLogin, startLogin } from "./oidc.js";
 import { createSessionStore } from "./session.js";
 
-const CLIENT = "riz-console";
+const CLIENT = "bae6-authz-console";
 const ACCESS_TOKEN = "access-token-secret-value";
 
 /** A minimal OIDC provider that signs real ID tokens and checks PKCE like a real one. */
