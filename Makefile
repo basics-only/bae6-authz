@@ -2,7 +2,7 @@ COMPOSE = docker compose --env-file .env -f deploy/compose.yaml
 
 FGA_CLI = openfga/cli:v0.8.2
 
-.PHONY: install format lint typecheck test model-test migrate integration up down
+.PHONY: install format lint contracts-verify typecheck test model-test migrate integration up down
 
 install:
 	pnpm install --frozen-lockfile
@@ -15,6 +15,10 @@ format:
 lint:
 	pnpm lint
 	uv run ruff check .
+
+# The vendored bae6-contracts release must be unmodified.
+contracts-verify:
+	cd contracts/vendor && shasum -a 256 -c --quiet SHA256SUMS
 
 typecheck:
 	pnpm typecheck
