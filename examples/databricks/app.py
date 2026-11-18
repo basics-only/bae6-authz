@@ -1,7 +1,7 @@
-"""A report endpoint guarded by riz and by Unity Catalog (ADR 0007).
+"""A report endpoint guarded by authz and by Unity Catalog (ADR 0007).
 
-riz decides whether this user may open the report; Databricks decides, with the same user's
-token, whether they may read the table behind it. Both must say yes. riz allowing is not
+authz decides whether this user may open the report; Databricks decides, with the same user's
+token, whether they may read the table behind it. Both must say yes. authz allowing is not
 enough, and a Unity Catalog grant is not enough either.
 
 Run one request by hand (see README.md):
@@ -13,8 +13,8 @@ import os
 import sys
 from collections.abc import Mapping
 
-from riz import Riz, RizError
-from riz.databricks import (
+from bae6_authz import Authz, AuthzError
+from bae6_authz.databricks import (
     Databricks,
     DatabricksDeniedError,
     DatabricksError,
@@ -27,7 +27,7 @@ REPORTS = {"sales": "main.sales.orders"}
 
 
 async def handle(
-    headers: Mapping[str, str], report: str, *, riz: Riz, db: Databricks
+    headers: Mapping[str, str], report: str, *, authz: Authz, db: Databricks
 ) -> tuple[int, dict[str, object]]:
     table = REPORTS.get(report)
     if table is None:
@@ -38,12 +38,14 @@ async def handle(
         # No user, no query: this app never falls back to its own identity.
         return 401, {"error": "no user credential"}
     try:
-        decision = await riz.check(action="read", resource=f"report:{report}", end_user_token=token)
-    except RizError:
+        decision = await authz.check(
+            action="read", resource=f"report:{report}", end_user_token=token
+        )
+    except AuthzError:
         # Includes "could not decide": an undecided check is a refusal.
         return 503, {"error": "authorization unavailable"}
     if not decision.allowed:
-        return 403, {"error": "denied by riz"}
+        return 403, {"error": "denied by authz"}
     try:
         result = await db.query(f"SELECT * FROM {table} LIMIT 10", user_token=token)
     except DatabricksDeniedError:
@@ -55,17 +57,17 @@ async def handle(
 
 async def _main(report: str) -> None:
     async with (
-        Riz(
-            os.environ["RIZ_API_URL"],
-            os.environ["RIZ_WORKLOAD_TOKEN"],
-            os.environ["RIZ_APPLICATION"],
-        ) as riz,
+        Authz(
+            os.environ["BAE6_API_URL"],
+            os.environ["BAE6_WORKLOAD_TOKEN"],
+            os.environ["BAE6_APPLICATION"],
+        ) as authz,
         Databricks(
-            os.environ["RIZ_DATABRICKS_HOST"], os.environ["RIZ_DATABRICKS_WAREHOUSE_ID"]
+            os.environ["BAE6_DATABRICKS_HOST"], os.environ["BAE6_DATABRICKS_WAREHOUSE_ID"]
         ) as db,
     ):
-        headers = {"x-forwarded-access-token": os.environ.get("RIZ_USER_TOKEN", "")}
-        status, body = await handle(headers, report, riz=riz, db=db)
+        headers = {"x-forwarded-access-token": os.environ.get("BAE6_USER_TOKEN", "")}
+        status, body = await handle(headers, report, authz=authz, db=db)
         print(status, body)
 
 

@@ -53,13 +53,16 @@ export function explorerRoutes(deps: { checks: CheckService; pool: pg.Pool }) {
     permit(principal, application);
 
     try {
-      const result = await deps.checks.check(application, body.principal, {
-        relation: body.relation,
-        object: body.object,
-      });
+      const result = await deps.checks.check(
+        principal.organization,
+        application,
+        body.principal,
+        { relation: body.relation, object: body.object },
+      );
       // The answer is withheld if it cannot be recorded.
       await recordAudit(deps.pool, {
         actor: principal.subject,
+        organization: principal.organization,
         action: "explorer.check",
         applicationId: application,
         requestId: requestIdOf(res),

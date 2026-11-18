@@ -4,7 +4,7 @@ Status: accepted
 
 ## Context
 
-riz serves many applications from one OpenFGA deployment. An application's
+bae6-authz serves many applications from one OpenFGA deployment. An application's
 permissions must not be readable or influenceable by another application, yet
 organization-wide roles (for example "acme admin") need to reach applications.
 
@@ -17,7 +17,7 @@ cannot reference objects in another, so inheritance never crosses stores.
 
 - **One OpenFGA store per application and environment** is the default.
 - Stores are named `<app>-<env>` (lowercase, `[a-z0-9-]`), for example `crm-prod`.
-- Store IDs and authorization model IDs are resolved **server-side** from the riz
+- Store IDs and authorization model IDs are resolved **server-side** from the bae6-authz
   database. Callers never send them; the API contract has no such fields.
 - Every OpenFGA call passes an explicit `authorization_model_id`
   (see the model pinning ADR, 0002).
@@ -35,7 +35,7 @@ an application only through explicit, audited tuples written into that
 application's store: the organization's role tuples (for example
 `user:olga admin organization:acme`) and the parent link
 (`organization:acme organization application:crm`). The model then derives
-application roles from them (`admin from organization`). riz does not mirror,
+application roles from them (`admin from organization`). bae6-authz does not mirror,
 sync, or automatically inherit roles between stores.
 
 **Inheritance does not cross OpenFGA stores automatically.** Anything that looks

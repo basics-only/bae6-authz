@@ -16,6 +16,6 @@
   },
   "nonconformingResponse": true,
   "expect": {
-    "error": { "type": "RizApiError", "status": 502 }
+    "error": { "type": "AuthzApiError", "status": 502 }
   }
 }

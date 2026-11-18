@@ -1,5 +1,5 @@
 {
-  "name": "@riz/load",
+  "name": "@bae6/authz-load",
   "version": "0.0.0",
   "private": true,
   "type": "module",

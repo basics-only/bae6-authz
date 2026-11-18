@@ -1,0 +1,60 @@
+# bae6-authz API on the bae6-platform `bae6-service` chart. Postgres and OpenFGA are external.
+# helm install bae6-authz-api <bae6-platform checkout>/charts/bae6-service -f deploy/values.yaml \
+#   --set image.digest=sha256:...
+image:
+  repository: ghcr.io/basics-only/bae6-authz-api
+
+# Three replicas is the acceptance gate (independent, equivalent decisions).
+replicas: 3
+autoscaling:
+  minReplicas: 3
+  maxReplicas: 10
+
+env:
+  BAE6_AUTH_MODE: oidc
+  # The chart's readiness probe fails after 2 x 2s, so the pod leaves the Service well within this.
+  BAE6_SHUTDOWN_DELAY_MS: "10000"
+  OPENFGA_API_URL: http://openfga.openfga.svc.cluster.local:8080
+  # Printed by `bootstrap-admin` (docs/decisions/0004-admin-authorization.md); the API will not start without them.
+  BAE6_ADMIN_STORE_ID: replace-with-the-bae6-admin-store-id
+  BAE6_ADMIN_MODEL_ID: replace-with-the-bae6-admin-model-id
+  BAE6_OIDC_ISSUERS: >-
+    [{"issuer":"https://idp.example.invalid/","organization":"example","audience":"authz","adminAudience":"bae6-admin","jwksUri":"https://idp.example.invalid/.well-known/jwks.json"}]
+
+envFromSecrets:
+  - name: BAE6_DATABASE_URL
+    secret: bae6-authz-api
+    key: database-url
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+networkPolicy:
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openfga
+      ports:
+        - port: 8080
+    # Postgres usually sits on a private address; narrow this to it.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 5432
+    # The identity provider's JWKS is public; private ranges stay closed on 443.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+      ports:
+        - port: 443

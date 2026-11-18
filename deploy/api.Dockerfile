@@ -2,7 +2,7 @@ FROM node:22.21-alpine@sha256:0340fa682d72068edf603c305bfbc10e23219fb0e40df58d9e
 RUN corepack enable
 WORKDIR /app
 COPY . .
-RUN pnpm install --frozen-lockfile --filter @riz/api...
-RUN pnpm --filter @riz/api build
+RUN pnpm install --frozen-lockfile --filter @bae6/authz-api...
+RUN pnpm --filter @bae6/authz-api build
 ENV NODE_ENV=production
 CMD ["node", "apps/api/dist/index.js"]

@@ -15,23 +15,40 @@ import { migrate } from "../db/migrate.js";
 import { createApp } from "../server.js";
 import { createResolver, dbLookup } from "./resolver.js";
 import { checkRoutes } from "./routes.js";
-import { createCheckService } from "./service.js";
+import { createCheckService, LIST_OBJECTS_MAX_RESULTS } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 const principals: Record<string, Principal> = {
   admin: {
     subject: "admin",
+    organization: "acme",
     scopes: ["applications:write", "check"],
     applications: ["*"],
   },
-  crmOnly: { subject: "crm", scopes: ["check"], applications: ["crm-prod"] },
-  noScope: { subject: "ns", scopes: [], applications: ["*"] },
+  crmOnly: {
+    subject: "crm",
+    organization: "acme",
+    scopes: ["check"],
+    applications: ["crm-prod"],
+  },
+  noScope: {
+    subject: "ns",
+    organization: "acme",
+    scopes: [],
+    applications: ["*"],
+  },
+  otherTenant: {
+    subject: "globex-admin",
+    organization: "globex",
+    scopes: ["check"],
+    applications: ["*"],
+  },
 };
 const endUsers: Record<string, string> = {
   "alice-token": "alice",
@@ -46,6 +63,7 @@ type Call = (
   body: unknown,
   endUserToken?: string,
   path?: string,
+  endUserHeader?: string,
 ) => Promise<Res>;
 
 function listen(server: Server) {
@@ -104,13 +122,19 @@ async function withApp(
     });
     servers.push(server);
     const port = await listen(server);
-    return async (token, body, endUserToken, path = "/v1/check") => {
+    return async (
+      token,
+      body,
+      endUserToken,
+      path = "/v1/check",
+      endUserHeader = "bae6-end-user-token",
+    ) => {
       const res = await fetch(`http://127.0.0.1:${port}${path}`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
-          ...(endUserToken ? { "riz-end-user-token": endUserToken } : {}),
+          ...(endUserToken ? { [endUserHeader]: endUserToken } : {}),
         },
         body: JSON.stringify(body),
       });
@@ -139,7 +163,7 @@ async function withApp(
     const binding = await createResolver(
       dbLookup(pool),
       apiUrl as string,
-    ).resolve("crm-prod");
+    ).resolve("acme", "crm-prod");
     const fga = new OpenFgaClient({
       apiUrl: apiUrl as string,
       storeId: binding.storeId,
@@ -198,6 +222,20 @@ test(
     }),
 );
 
+test("still accepts the end-user token in the legacy riz header", opts, () =>
+  withApp(async ({ admin }) => {
+    const res = await admin(
+      "admin",
+      read,
+      "alice-token",
+      "/v1/check",
+      "riz-end-user-token",
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.body.status, "allow");
+  }),
+);
+
 test("rejects a request that tries to name the user in the body", opts, () =>
   withApp(async ({ admin }) => {
     const res = await admin(
@@ -250,6 +288,25 @@ test(
         404,
       );
       assert.equal((await admin("crmOnly", read, "alice-token")).status, 200);
+    }),
+);
+
+test(
+  "another organization's application is indistinguishable from one that does not exist",
+  opts,
+  () =>
+    withApp(async ({ admin }) => {
+      const foreign = await admin("otherTenant", read, "alice-token");
+      const missing = await admin(
+        "otherTenant",
+        { ...read, application: "hr-prod" },
+        "alice-token",
+      );
+      assert.equal(foreign.status, 404);
+      assert.deepEqual(
+        { ...foreign.body, requestId: null },
+        { ...missing.body, requestId: null },
+      );
     }),
 );
 
@@ -670,5 +727,182 @@ test(
         ).status,
         401,
       );
+    }),
+);
+
+const LIST = "/v1/list-objects";
+const listRead = {
+  application: "crm-prod",
+  relation: "read",
+  type: "document",
+};
+
+test("lists only the objects the end user holds the relation on", opts, () =>
+  withApp(async ({ admin }) => {
+    const alice = await admin("admin", listRead, "alice-token", LIST);
+    assert.equal(alice.status, 200);
+    assert.deepEqual(alice.body.objects, ["document:d1"]);
+    assert.equal("nextCursor" in alice.body, false);
+    assert.match(String(alice.body.modelId), /^[0-9A-Z]{26}$/);
+    const bob = await admin("admin", listRead, "bob-token", LIST);
+    assert.deepEqual(bob.body.objects, []);
+  }),
+);
+
+test(
+  "list-objects refuses what check refuses: no scope, unbound or foreign application, bad end user",
+  opts,
+  () =>
+    withApp(async ({ admin }) => {
+      assert.equal(
+        (await admin("admin", listRead, undefined, LIST)).status,
+        401,
+      );
+      assert.equal(
+        (await admin("admin", listRead, "userset-token", LIST)).status,
+        401,
+      );
+      assert.equal(
+        (await admin("noScope", listRead, "alice-token", LIST)).status,
+        403,
+      );
+      assert.equal(
+        (
+          await admin(
+            "crmOnly",
+            { ...listRead, application: "hr-prod" },
+            "alice-token",
+            LIST,
+          )
+        ).status,
+        403,
+      );
+      const foreign = await admin("otherTenant", listRead, "alice-token", LIST);
+      const missing = await admin(
+        "otherTenant",
+        { ...listRead, application: "hr-prod" },
+        "alice-token",
+        LIST,
+      );
+      assert.equal(foreign.status, 404);
+      assert.deepEqual(
+        { ...foreign.body, requestId: null },
+        { ...missing.body, requestId: null },
+      );
+    }),
+);
+
+test("list-objects rejects bad limits, cursors and fields", opts, () =>
+  withApp(async ({ admin }) => {
+    const bad = [
+      { ...listRead, limit: 0 },
+      { ...listRead, limit: 101 },
+      { ...listRead, limit: 1.5 },
+      { ...listRead, cursor: "not base64 object" },
+      // A cursor from another type's listing cannot widen this one.
+      { ...listRead, cursor: Buffer.from("folder:f1").toString("base64url") },
+      { ...listRead, type: "document:d1" },
+      { ...listRead, user: "user:alice" },
+    ];
+    for (const body of bad) {
+      const res = await admin("admin", body, "alice-token", LIST);
+      assert.equal(res.status, 400, JSON.stringify(body));
+    }
+  }),
+);
+
+test(
+  "list-objects pages in ascending order and the cursor resumes after the last object",
+  opts,
+  () =>
+    withApp(async ({ callWith }) => {
+      const upstream = createServer((_, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            objects: [
+              "document:c",
+              "document:a",
+              "document:e",
+              "document:b",
+              "document:d",
+            ],
+          }),
+        );
+      });
+      const port = await listen(upstream);
+      try {
+        const call = await callWith(`http://127.0.0.1:${port}`, 2000);
+        const seen: unknown[] = [];
+        let cursor: unknown;
+        for (let page = 0; page < 5; page++) {
+          const res = await call(
+            "admin",
+            { ...listRead, limit: 2, ...(cursor ? { cursor } : {}) },
+            "alice-token",
+            LIST,
+          );
+          assert.equal(res.status, 200);
+          seen.push(...(res.body.objects as unknown[]));
+          cursor = res.body.nextCursor;
+          if (cursor === undefined) break;
+        }
+        assert.deepEqual(seen, [
+          "document:a",
+          "document:b",
+          "document:c",
+          "document:d",
+          "document:e",
+        ]);
+        assert.equal(cursor, undefined);
+      } finally {
+        upstream.closeAllConnections();
+        upstream.close();
+      }
+    }),
+);
+
+test(
+  "list-objects lists nothing, with a code, when OpenFGA is unreachable",
+  opts,
+  () =>
+    withApp(async ({ callWith }) => {
+      const call = await callWith("http://127.0.0.1:1", 2000);
+      const res = await call("admin", listRead, "alice-token", LIST);
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body.objects, []);
+      assert.equal(res.body.code, "backend_error");
+      assert.equal("modelId" in res.body, false);
+    }),
+);
+
+test(
+  "list-objects lists nothing, with a code, when OpenFGA may have truncated the list",
+  opts,
+  () =>
+    withApp(async ({ callWith }) => {
+      const upstream = createServer((_, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            objects: Array.from(
+              { length: LIST_OBJECTS_MAX_RESULTS },
+              (_, i) => `document:d${i}`,
+            ),
+          }),
+        );
+      });
+      const port = await listen(upstream);
+      try {
+        const call = await callWith(`http://127.0.0.1:${port}`, 2000);
+        const res = await call("admin", listRead, "alice-token", LIST);
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body.objects, []);
+        assert.equal(res.body.code, "result_truncated");
+        assert.equal("nextCursor" in res.body, false);
+      } finally {
+        upstream.closeAllConnections();
+        upstream.close();
+      }
     }),
 );

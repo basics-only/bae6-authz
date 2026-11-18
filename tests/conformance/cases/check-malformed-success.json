@@ -17,7 +17,7 @@
   "nonconformingResponse": true,
   "expect": {
     "error": {
-      "type": "RizApiError",
+      "type": "AuthzApiError",
       "status": 200,
       "code": "invalid_response"
     }

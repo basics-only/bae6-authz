@@ -1,4 +1,4 @@
 scrape_configs:
-  - job_name: riz-api
+  - job_name: bae6-authz-api
     static_configs:
       - targets: ["api:9464"]

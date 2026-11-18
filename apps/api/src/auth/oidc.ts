@@ -4,19 +4,30 @@ import {
   type JWTPayload,
   jwtVerify,
 } from "jose";
+import { ORGANIZATION_ID } from "./principal.js";
 
 export interface OidcIssuer {
   issuer: string;
+  /** The organization every token from this issuer acts in. */
+  organization: string;
   audience: string;
   jwksUri: string;
+  /**
+   * A second audience that marks a token as minted for administration. Only a token that
+   * carries it can be given admin roles, so a user login for the same client never can.
+   */
+  adminAudience?: string;
   /** Signature algorithms accepted. Defaults to RS256 and ES256. */
   algorithms?: readonly string[];
 }
 
 export interface VerifiedToken {
   issuer: string;
+  organization: string;
   subject: string;
   claims: JWTPayload;
+  /** True when the token carries the issuer's `adminAudience`. */
+  admin?: boolean;
 }
 
 /**
@@ -53,7 +64,9 @@ export function oidcTokenVerifier(
   const byIssuer = new Map<
     string,
     {
+      organization: string;
       audience: string;
+      adminAudience?: string;
       algorithms: string[];
       keys: ReturnType<typeof createRemoteJWKSet>;
     }
@@ -76,8 +89,26 @@ export function oidcTokenVerifier(
       throw new Error(`issuer ${i.issuer}: jwksUri must be https`);
     }
     if (byIssuer.has(i.issuer)) throw new Error(`duplicate issuer ${i.issuer}`);
+    // typeof first: RegExp.test(undefined) tests the string "undefined", which matches.
+    if (
+      typeof i.organization !== "string" ||
+      !ORGANIZATION_ID.test(i.organization)
+    ) {
+      throw new Error(
+        `issuer ${i.issuer}: organization must match ${ORGANIZATION_ID}`,
+      );
+    }
+    if (i.adminAudience === i.audience) {
+      throw new Error(
+        `issuer ${i.issuer}: adminAudience must differ from audience`,
+      );
+    }
     byIssuer.set(i.issuer, {
+      organization: i.organization,
       audience: i.audience,
+      ...(i.adminAudience === undefined
+        ? {}
+        : { adminAudience: i.adminAudience }),
       algorithms,
       // jose caches the key set, refetches on an unknown kid (rotation) at most
       // once per cooldown, and bounds each fetch by the timeout.
@@ -102,11 +133,22 @@ export function oidcTokenVerifier(
     try {
       const { payload } = await jwtVerify(token, config.keys, {
         issuer,
-        audience: config.audience,
+        audience: config.adminAudience
+          ? [config.audience, config.adminAudience]
+          : config.audience,
         algorithms: config.algorithms,
         requiredClaims: ["exp", "sub"],
       });
-      return { issuer, subject: payload.sub as string, claims: payload };
+      const aud = [payload.aud ?? []].flat();
+      return {
+        issuer,
+        organization: config.organization,
+        subject: payload.sub as string,
+        claims: payload,
+        admin:
+          config.adminAudience !== undefined &&
+          aud.includes(config.adminAudience),
+      };
     } catch (err) {
       const code = (err as { code?: unknown }).code;
       if (typeof code === "string" && INVALID_TOKEN_CODES.has(code))

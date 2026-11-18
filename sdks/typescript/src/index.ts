@@ -1,6 +1,6 @@
-export interface RizOptions {
+export interface AuthzOptions {
   baseUrl: string;
-  /** Bearer token identifying this workload to riz. */
+  /** Bearer token identifying this workload to authz. */
   credentials: string;
   application: string;
   /** Total time allowed per request. Defaults to 5000. */
@@ -14,7 +14,7 @@ export interface Check {
 
 /**
  * `higher_consistency` sees revocations already committed, at more cost. Unset uses
- * riz's default, `minimize_latency`, which may serve a briefly cached answer.
+ * authz's default, `minimize_latency`, which may serve a briefly cached answer.
  */
 export type Consistency = "minimize_latency" | "higher_consistency";
 
@@ -38,7 +38,16 @@ export interface BatchDecision {
   results: ItemDecision[];
 }
 
-export class RizError extends Error {
+export interface ObjectPage {
+  requestId: string;
+  modelId?: string;
+  /** Ascending `type:id` objects the user holds the action on. */
+  objects: string[];
+  /** Pass as `cursor` for the next page; absent on the last page. */
+  nextCursor?: string;
+}
+
+export class AuthzError extends Error {
   readonly requestId: string | undefined;
   constructor(message: string, requestId?: string, options?: ErrorOptions) {
     super(message, options);
@@ -47,8 +56,8 @@ export class RizError extends Error {
   }
 }
 
-/** riz answered with something other than a decision. */
-export class RizApiError extends RizError {
+/** authz answered with something other than a decision. */
+export class AuthzApiError extends AuthzError {
   constructor(
     readonly status: number,
     readonly code: string | undefined,
@@ -60,28 +69,28 @@ export class RizApiError extends RizError {
 }
 
 /** 401 or 403: bad workload or end-user credentials, or a missing scope. */
-export class RizAuthError extends RizApiError {}
+export class AuthzAuthError extends AuthzApiError {}
 
-/** 400: riz rejected the request. */
-export class RizValidationError extends RizApiError {}
+/** 400: authz rejected the request. */
+export class AuthzValidationError extends AuthzApiError {}
 
-/** riz could not decide (for example its authorization backend timed out). */
-export class RizIndeterminateError extends RizError {
+/** authz could not decide (for example its authorization backend timed out). */
+export class AuthzIndeterminateError extends AuthzError {
   constructor(
     readonly code: string | undefined,
     requestId: string,
   ) {
     super(
-      `riz could not decide${code ? ` (${code})` : ""}; treat as denied`,
+      `authz could not decide${code ? ` (${code})` : ""}; treat as denied`,
       requestId,
     );
   }
 }
 
-/** riz was not reached or did not answer. */
-export class RizTransportError extends RizError {}
+/** authz was not reached or did not answer. */
+export class AuthzTransportError extends AuthzError {}
 
-export class RizTimeoutError extends RizTransportError {}
+export class AuthzTimeoutError extends AuthzTransportError {}
 
 type Json = Record<string, unknown>;
 
@@ -97,24 +106,28 @@ function parseJson(text: string): unknown {
   }
 }
 
-function httpError(status: number, parsed: unknown): RizApiError {
+function httpError(status: number, parsed: unknown): AuthzApiError {
   const body = isObject(parsed) ? parsed : {};
   const Err =
     status === 400
-      ? RizValidationError
+      ? AuthzValidationError
       : status === 401 || status === 403
-        ? RizAuthError
-        : RizApiError;
+        ? AuthzAuthError
+        : AuthzApiError;
   return new Err(
     status,
     str(body.code),
-    str(body.message) ?? `riz returned HTTP ${status}`,
+    str(body.message) ?? `authz returned HTTP ${status}`,
     str(body.requestId),
   );
 }
 
 const invalidResponse = () =>
-  new RizApiError(200, "invalid_response", "riz returned an unusable response");
+  new AuthzApiError(
+    200,
+    "invalid_response",
+    "authz returned an unusable response",
+  );
 
 // Anything that is not `allow` is not an allow; `indeterminate` is kept apart.
 function itemDecision(status: string | undefined): ItemDecision {
@@ -125,13 +138,13 @@ function itemDecision(status: string | undefined): ItemDecision {
   return { allowed: false, status: "deny" };
 }
 
-export class Riz {
+export class Authz {
   readonly #baseUrl: string;
   readonly #credentials: string;
   readonly #application: string;
   readonly #timeoutMs: number;
 
-  constructor(options: RizOptions) {
+  constructor(options: AuthzOptions) {
     this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.#credentials = options.credentials;
     this.#application = options.application;
@@ -140,7 +153,7 @@ export class Riz {
 
   /**
    * Whether `endUserToken`'s user holds `action` on `resource`. Raises
-   * RizIndeterminateError when riz cannot decide; never resolves to allow then.
+   * AuthzIndeterminateError when authz cannot decide; never resolves to allow then.
    */
   async check(
     input: Check & { endUserToken: string; consistency?: Consistency },
@@ -159,7 +172,7 @@ export class Riz {
       throw invalidResponse();
     }
     if (status === "indeterminate") {
-      throw new RizIndeterminateError(str(body.code), requestId);
+      throw new AuthzIndeterminateError(str(body.code), requestId);
     }
     const allowed = status === "allow";
     const modelId = str(body.modelId);
@@ -171,7 +184,7 @@ export class Riz {
     };
   }
 
-  /** At most 100 checks (riz may allow fewer). One item being indeterminate does not affect the rest. */
+  /** At most 100 checks (authz may allow fewer). One item being indeterminate does not affect the rest. */
   async batchCheck(
     checks: readonly Check[],
     options: { endUserToken: string; consistency?: Consistency },
@@ -209,6 +222,46 @@ export class Riz {
     };
   }
 
+  /**
+   * One page of the `type` objects `endUserToken`'s user holds `action` on. Raises
+   * AuthzIndeterminateError when authz cannot list; never returns a partial guess then.
+   */
+  async listObjects(input: {
+    action: string;
+    type: string;
+    endUserToken: string;
+    limit?: number;
+    cursor?: string;
+    consistency?: Consistency;
+  }): Promise<ObjectPage> {
+    const { action, endUserToken, ...rest } = input;
+    const body = await this.#post("/v1/list-objects", endUserToken, {
+      application: this.#application,
+      relation: action,
+      ...rest,
+    });
+    const requestId = str(body.requestId);
+    const { objects } = body;
+    if (
+      requestId === undefined ||
+      !Array.isArray(objects) ||
+      !objects.every((o) => typeof o === "string")
+    ) {
+      throw invalidResponse();
+    }
+    if (body.code !== undefined) {
+      throw new AuthzIndeterminateError(str(body.code), requestId);
+    }
+    const modelId = str(body.modelId);
+    const nextCursor = str(body.nextCursor);
+    return {
+      requestId,
+      ...(modelId === undefined ? {} : { modelId }),
+      objects,
+      ...(nextCursor === undefined ? {} : { nextCursor }),
+    };
+  }
+
   async #post(
     path: string,
     endUserToken: string,
@@ -224,7 +277,7 @@ export class Riz {
         signal: AbortSignal.timeout(this.#timeoutMs),
         headers: {
           authorization: `Bearer ${this.#credentials}`,
-          "riz-end-user-token": endUserToken,
+          "bae6-end-user-token": endUserToken,
           "content-type": "application/json",
         },
         body: JSON.stringify(payload),
@@ -233,15 +286,15 @@ export class Riz {
       text = await res.text();
     } catch (cause) {
       if (cause instanceof Error && cause.name === "TimeoutError") {
-        throw new RizTimeoutError(
-          `riz did not answer within ${this.#timeoutMs} ms`,
+        throw new AuthzTimeoutError(
+          `authz did not answer within ${this.#timeoutMs} ms`,
           undefined,
           { cause },
         );
       }
       // No `cause`: fetch's error can quote a header value, i.e. the end-user token.
-      throw new RizTransportError(
-        `could not reach riz (${cause instanceof Error ? cause.name : "error"})`,
+      throw new AuthzTransportError(
+        `could not reach authz (${cause instanceof Error ? cause.name : "error"})`,
       );
     }
     const parsed = parseJson(text);

@@ -38,11 +38,14 @@ export function createProviderService(deps: { pool: pg.Pool }) {
   }
 
   return {
-    async get(application: string): Promise<DatabricksConfig> {
+    async get(
+      organization: string,
+      application: string,
+    ): Promise<DatabricksConfig> {
       const { rows } = await pool.query(
         `SELECT config FROM provider_configs
-          WHERE application_id = $1 AND provider = 'databricks'`,
-        [application],
+          WHERE organization_id = $1 AND application_id = $2 AND provider = 'databricks'`,
+        [organization, application],
       );
       if (rows.length === 0) throw new ProviderNotConfigured();
       return rows[0].config as DatabricksConfig;
@@ -50,6 +53,7 @@ export function createProviderService(deps: { pool: pg.Pool }) {
 
     async put(
       actor: string,
+      organization: string,
       application: string,
       config: DatabricksConfig,
       requestId?: string,
@@ -58,6 +62,7 @@ export function createProviderService(deps: { pool: pg.Pool }) {
         const { auditEventId } = await audited(
           {
             actor,
+            organization,
             action: "providers.put",
             applicationId: application,
             requestId,
@@ -65,15 +70,16 @@ export function createProviderService(deps: { pool: pg.Pool }) {
           },
           (db) =>
             db.query(
-              `INSERT INTO provider_configs (application_id, provider, config)
-               VALUES ($1, 'databricks', $2)
-               ON CONFLICT (application_id, provider) DO UPDATE SET config = EXCLUDED.config`,
-              [application, config],
+              `INSERT INTO provider_configs (organization_id, application_id, provider, config)
+               VALUES ($1, $2, 'databricks', $3)
+               ON CONFLICT (organization_id, application_id, provider)
+               DO UPDATE SET config = EXCLUDED.config`,
+              [organization, application, config],
             ),
         );
         return auditEventId;
       } catch (err) {
-        // The audit row references the application too, so either insert can raise this.
+        // An application this organization does not have, including another tenant's.
         if ((err as { code?: string }).code === FOREIGN_KEY_VIOLATION) {
           throw new ApplicationMissing();
         }
@@ -83,12 +89,14 @@ export function createProviderService(deps: { pool: pg.Pool }) {
 
     async remove(
       actor: string,
+      organization: string,
       application: string,
       requestId?: string,
     ): Promise<string> {
       const { auditEventId } = await audited(
         {
           actor,
+          organization,
           action: "providers.delete",
           applicationId: application,
           requestId,
@@ -97,8 +105,8 @@ export function createProviderService(deps: { pool: pg.Pool }) {
         async (db) => {
           const { rowCount } = await db.query(
             `DELETE FROM provider_configs
-              WHERE application_id = $1 AND provider = 'databricks'`,
-            [application],
+              WHERE organization_id = $1 AND application_id = $2 AND provider = 'databricks'`,
+            [organization, application],
           );
           // Throwing rolls the audit row back: nothing changed, so nothing to record.
           if (rowCount === 0) throw new ProviderNotConfigured();

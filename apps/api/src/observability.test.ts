@@ -41,7 +41,7 @@ function listen(server: Server) {
   );
 }
 
-/** Runs riz over a fake OpenFGA that allows everything and records the traceparent it gets. */
+/** Runs authz over a fake OpenFGA that allows everything and records the traceparent it gets. */
 async function withRiz(
   fn: (ctx: {
     post: (path: string, body: unknown, auth?: string) => Promise<number>;
@@ -76,12 +76,17 @@ async function withRiz(
         authorizationModelId: ULID,
       }),
   } as unknown as ReturnType<typeof createResolver>;
-  const riz = createApp({
+  const authz = createApp({
     readiness: async () => [],
     log: () => {},
     authenticate: (h) =>
       h === "Bearer svc-token"
-        ? { subject: "svc", scopes: ["check"], applications: ["*"] }
+        ? {
+            subject: "svc",
+            organization: "acme",
+            scopes: ["check"],
+            applications: ["*"],
+          }
         : null,
     routes: checkRoutes({
       service: createCheckService({ resolver, timeoutMs: 2000 }),
@@ -89,7 +94,7 @@ async function withRiz(
       maxBatchSize: 10,
     }),
   });
-  const port = await listen(riz);
+  const port = await listen(authz);
   try {
     await fn({
       upstreamTraceparents,
@@ -100,7 +105,7 @@ async function withRiz(
             headers: {
               authorization: auth,
               "content-type": "application/json",
-              "riz-end-user-token": "alice-token",
+              "bae6-end-user-token": "alice-token",
               traceparent: `00-${CALLER_TRACE}-${CALLER_SPAN}-01`,
             },
             body: JSON.stringify(body),
@@ -108,8 +113,8 @@ async function withRiz(
         ).status,
     });
   } finally {
-    riz.closeAllConnections();
-    riz.close();
+    authz.closeAllConnections();
+    authz.close();
     upstream.closeAllConnections();
     upstream.close();
   }
@@ -122,7 +127,7 @@ async function until(done: () => boolean) {
   assert.ok(done(), "timed out waiting for telemetry");
 }
 
-test("one check is a single trace across the caller, riz and the OpenFGA request", async () => {
+test("one check is a single trace across the caller, authz and the OpenFGA request", async () => {
   spans.reset();
   await withRiz(async ({ post, upstreamTraceparents }) => {
     assert.equal(
@@ -182,19 +187,19 @@ async function pointCount(
 test("metrics count requests by route, decisions, OpenFGA calls and batch sizes", async () => {
   const probes = {
     served: [
-      "riz.http.server.duration",
+      "authz.http.server.duration",
       { "http.route": "/v1/batch-check", "http.response.status_code": 200 },
     ],
     unmatched: [
-      "riz.http.server.duration",
+      "authz.http.server.duration",
       { "http.route": "unmatched", "http.response.status_code": 401 },
     ],
-    allow: ["riz.check.decisions", { status: "allow" }],
+    allow: ["authz.check.decisions", { status: "allow" }],
     fga: [
-      "riz.openfga.duration",
+      "authz.openfga.duration",
       { "rpc.method": "batch_check", outcome: "ok" },
     ],
-    sizes: ["riz.batch.size", {}],
+    sizes: ["authz.batch.size", {}],
   } as const;
   const read = async () =>
     Object.fromEntries(
@@ -239,7 +244,7 @@ test("metrics count requests by route, decisions, OpenFGA calls and batch sizes"
       .getMetrics()
       .at(-1)
       ?.scopeMetrics.flatMap((s) => s.metrics)
-      .filter((m) => m.descriptor.name === "riz.http.server.duration")
+      .filter((m) => m.descriptor.name === "authz.http.server.duration")
       .flatMap((m) =>
         (m.dataPoints as Point[]).map((p) => p.attributes["http.route"]),
       ),

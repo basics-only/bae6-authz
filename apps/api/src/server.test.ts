@@ -5,7 +5,12 @@ import type { Principal } from "./auth/index.js";
 import { redact } from "./logging.js";
 import { createApp } from "./server.js";
 
-const anne: Principal = { subject: "anne", scopes: [], applications: [] };
+const anne: Principal = {
+  subject: "anne",
+  organization: "acme",
+  scopes: [],
+  applications: [],
+};
 const authenticate = (authorization: string | undefined) =>
   authorization === "Bearer good" ? anne : null;
 

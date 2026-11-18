@@ -14,7 +14,7 @@ import {
 } from "./harness.js";
 
 // Model migration safety (RIZ-042): model changes are validated, versioned, reversible and
-// isolated per application. Needs RIZ_DATABASE_URL and OPENFGA_API_URL.
+// isolated per application. Needs BAE6_DATABASE_URL and OPENFGA_API_URL.
 const openfga = required("OPENFGA_API_URL");
 const PLATFORM = "tok-platform";
 const CHECK = "tok-check";
@@ -84,7 +84,7 @@ before(async () => {
   api = await startApi({
     ...files.env,
     OPENFGA_API_URL: openfga,
-    RIZ_DATABASE_URL: required("RIZ_DATABASE_URL"),
+    BAE6_DATABASE_URL: required("BAE6_DATABASE_URL"),
   });
   call = client(api.url);
 });

@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
-  title: riz API
+  title: bae6-authz API
   version: 1.0.0
   summary: Organization-wide authorization control plane.
   description: |
-    Single source of truth for the riz HTTP API. SDKs and the API implementation
+    Single source of truth for the bae6-authz HTTP API. SDKs and the API implementation
     are written against this file.
 
     **Identity and scoping are never taken from request bodies.**
@@ -174,6 +174,68 @@ paths:
                     results:
                       - { correlationId: a, status: indeterminate }
                       - { correlationId: b, status: indeterminate }
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /v1/list-objects:
+    post:
+      tags: [check]
+      operationId: listObjects
+      summary: List the objects of a type the end user holds a relation on
+      description: |
+        Returns object IDs in ascending order, at most `limit` (1 to 100, default 100)
+        per page. Pass `nextCursor` back as `cursor` for the next page; its absence
+        means the last page. Each page is evaluated afresh, so pages reflect the
+        relationships at the time each is requested. OpenFGA caps one evaluation
+        (by default 1000 objects or 3 seconds), so a very large result can be
+        incomplete without notice: use `check` for a decision on a specific object.
+        If authorization is unavailable the response is `200` with `code` set and
+        no objects; it never lists an object it could not confirm.
+        Required scope: `check`.
+      security:
+        - bearerAuth: [check]
+          endUserToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListObjectsRequest"
+            examples:
+              readable-documents:
+                value:
+                  application: crm
+                  relation: read
+                  type: document
+                  limit: 2
+      responses:
+        "200":
+          description: One page of objects.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListObjectsResponse"
+              examples:
+                page:
+                  value:
+                    requestId: req_01HZX8
+                    modelId: 01HZX3MODEL
+                    objects: ["document:d1", "document:d2"]
+                    nextCursor: ZG9jdW1lbnQ6ZDI
+                outage:
+                  value:
+                    requestId: req_01HZX9
+                    objects: []
+                    code: timeout
         "400":
           $ref: "#/components/responses/Error"
         "401":
@@ -406,7 +468,7 @@ paths:
         "204":
           description: Written.
           headers:
-            Riz-Audit-Event-Id:
+            Bae6-Audit-Event-Id:
               description: ID of the audit event recorded for this change.
               schema:
                 type: string
@@ -452,7 +514,7 @@ paths:
         "204":
           description: Deleted.
           headers:
-            Riz-Audit-Event-Id:
+            Bae6-Audit-Event-Id:
               description: ID of the audit event recorded for this change.
               schema:
                 type: string
@@ -529,7 +591,7 @@ paths:
         "422":
           description: >-
             The model parsed but an assertion did not hold
-            (`assertions_failed`), or it drops, repeats or changes a riz core type
+            (`assertions_failed`), or it drops, repeats or changes a bae6-authz core type
             (`core_violation`); nothing was bound.
           content:
             application/json:
@@ -683,7 +745,7 @@ paths:
       operationId: putDatabricksProvider
       summary: Create or replace an application's Databricks settings
       description: |
-        Audited (`providers.put`); the audit event ID is in `Riz-Audit-Event-Id`. Unknown
+        Audited (`providers.put`); the audit event ID is in `Bae6-Audit-Event-Id`. Unknown
         fields, including any credential, are rejected. Required scope: `providers:write`;
         the caller's application allow-list applies.
       security:
@@ -830,11 +892,13 @@ components:
     endUserToken:
       type: apiKey
       in: header
-      name: Riz-End-User-Token
+      name: Bae6-End-User-Token
       description: |
         JWT of the end user a check is made for. The API verifies it and derives
         the principal `user:<sub>`; an unverifiable token is rejected
         (`invalid_end_user_token`), never replaced by a service identity.
+        Deprecated: `Riz-End-User-Token` is still read when this header is absent, until
+        the next major version.
   parameters:
     Application:
       name: application
@@ -1017,6 +1081,53 @@ components:
             $ref: "#/components/schemas/BatchCheckItem"
         consistency:
           $ref: "#/components/schemas/Consistency"
+    ListObjectsRequest:
+      type: object
+      additionalProperties: false
+      required: [application, relation, type]
+      properties:
+        application:
+          $ref: "#/components/schemas/ApplicationId"
+        relation:
+          type: string
+          examples: [read]
+        type:
+          type: string
+          pattern: "^[a-z_]+$"
+          examples: [document]
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 100
+        cursor:
+          type: string
+          description: A previous page's `nextCursor`, unchanged.
+        consistency:
+          $ref: "#/components/schemas/Consistency"
+    ListObjectsResponse:
+      type: object
+      required: [requestId, objects]
+      properties:
+        requestId:
+          type: string
+        modelId:
+          type: string
+          description: Absent when `code` is set.
+        objects:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ObjectRef"
+        nextCursor:
+          type: string
+          description: Present when more objects follow.
+        code:
+          type: string
+          description: |
+            Present only when the list could not be computed, with `objects` empty:
+            `timeout`, `backend_error`, `no_active_model`, or `result_truncated` when the
+            user holds more objects than authz can list completely. New values may be added.
     BatchCheckResult:
       type: object
       required: [correlationId, status]
@@ -1042,6 +1153,9 @@ components:
             $ref: "#/components/schemas/BatchCheckResult"
     ApplicationCreate:
       type: object
+      description: |
+        `name`, a hyphen and `environment` together must be at most 63 characters,
+        the longest `ApplicationId`; a longer pair is `400 invalid_request`.
       additionalProperties: false
       required: [name, environment]
       properties:
@@ -1161,13 +1275,13 @@ components:
           type: string
           maxLength: 200000
           description: >-
-            A complete model in OpenFGA DSL. It must contain every riz core type exactly
+            A complete model in OpenFGA DSL. It must contain every bae6-authz core type exactly
             once and unchanged. Exactly one of `model` or `extension`.
         extension:
           type: string
           maxLength: 200000
           description: >-
-            Types only (no `model` header) in OpenFGA DSL, composed after the riz core
+            Types only (no `model` header) in OpenFGA DSL, composed after the bae6-authz core
             model, which it may reference but cannot redeclare. Exactly one of `model`
             or `extension`.
         tuples:

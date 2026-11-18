@@ -67,7 +67,7 @@ export function providerRoutes(service: ProviderService) {
         send(res, 200, {
           application,
           provider: "databricks",
-          config: await service.get(application),
+          config: await service.get(principal.organization, application),
         });
       } else if (req.method === "PUT") {
         requireScope(principal, "providers:write");
@@ -84,11 +84,12 @@ export function providerRoutes(service: ProviderService) {
         permit(principal, application);
         const auditEventId = await service.put(
           principal.subject,
+          principal.organization,
           application,
           config,
           requestIdOf(res),
         );
-        res.setHeader("riz-audit-event-id", auditEventId);
+        res.setHeader("bae6-audit-event-id", auditEventId);
         res.statusCode = 204;
         res.end();
       } else if (req.method === "DELETE") {
@@ -97,10 +98,11 @@ export function providerRoutes(service: ProviderService) {
         permit(principal, application);
         const auditEventId = await service.remove(
           principal.subject,
+          principal.organization,
           application,
           requestIdOf(res),
         );
-        res.setHeader("riz-audit-event-id", auditEventId);
+        res.setHeader("bae6-audit-event-id", auditEventId);
         res.statusCode = 204;
         res.end();
       } else {

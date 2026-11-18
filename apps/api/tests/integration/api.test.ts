@@ -5,7 +5,7 @@ import { OpenFgaClient } from "@openfga/sdk";
 import { transformer } from "@openfga/syntax-transformer";
 
 // Black-box suite against the running compose stack (`make integration`):
-// the riz API over HTTP, and OpenFGA directly only to seed tuples and models,
+// the authz API over HTTP, and OpenFGA directly only to seed tuples and models,
 // since the relationships API is a later milestone. Fixture tokens are the
 // dev-only values in deploy/fixtures.
 function required(name: string): string {
@@ -13,7 +13,7 @@ function required(name: string): string {
   if (!value) throw new Error(`${name} is required`);
   return value;
 }
-const api = required("RIZ_API_URL");
+const api = required("BAE6_API_URL");
 const openfga = required("OPENFGA_API_URL");
 
 const ADMIN = "dev-admin-token";
@@ -31,7 +31,7 @@ async function call(
     method,
     headers: {
       ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}),
-      ...(opts.user ? { "riz-end-user-token": opts.user } : {}),
+      ...(opts.user ? { "bae6-end-user-token": opts.user } : {}),
       "content-type": "application/json",
     },
     ...(opts.body === undefined ? {} : { body: JSON.stringify(opts.body) }),
@@ -62,7 +62,7 @@ async function activeModel(app: string): Promise<string> {
 }
 
 async function storeClient(app: string, authorizationModelId?: string) {
-  // The store is named after the application ID; the riz API never exposes store IDs.
+  // The store is named after the application ID; the authz API never exposes store IDs.
   const res = await fetch(`${openfga}/stores?name=${app}`);
   const { stores } = (await res.json()) as { stores: { id: string }[] };
   assert.equal(stores.length, 1, `one store named ${app}`);

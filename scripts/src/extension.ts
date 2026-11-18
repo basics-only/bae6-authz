@@ -30,7 +30,7 @@ function runSuite(testsFile: string, composed: string): Model {
   if ("model" in ((parse(yaml) as Record<string, unknown> | null) ?? {})) {
     throw new Error(`${basename(testsFile)} must not set an inline model`);
   }
-  const dir = mkdtempSync(join(tmpdir(), "riz-compose-"));
+  const dir = mkdtempSync(join(tmpdir(), "authz-compose-"));
   try {
     // The CLI container runs as another user; on Linux a 0700 mkdtemp dir is unreadable to it.
     chmodSync(dir, 0o755);
@@ -48,7 +48,7 @@ function runSuite(testsFile: string, composed: string): Model {
 }
 
 /**
- * Composes the riz core model with an application's extension (types only) and
+ * Composes the authz core model with an application's extension (types only) and
  * returns the composed model once both suites pass against it. An extension may
  * reference core types but not redeclare them, so it cannot change a central role.
  */

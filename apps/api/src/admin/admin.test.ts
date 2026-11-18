@@ -14,10 +14,10 @@ import { adminRoutes } from "./routes.js";
 import { createAdminService } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 const ALL = [
@@ -27,9 +27,30 @@ const ALL = [
   "audit:read",
 ];
 const principals: Record<string, Principal> = {
-  admin: { subject: "admin", scopes: ALL, applications: ["*"] },
-  crmOnly: { subject: "crm", scopes: ALL, applications: ["crm-prod"] },
-  noScope: { subject: "ns", scopes: [], applications: ["*"] },
+  admin: {
+    subject: "admin",
+    organization: "acme",
+    scopes: ALL,
+    applications: ["*"],
+  },
+  crmOnly: {
+    subject: "crm",
+    organization: "acme",
+    scopes: ALL,
+    applications: ["crm-prod"],
+  },
+  noScope: {
+    subject: "ns",
+    organization: "acme",
+    scopes: [],
+    applications: ["*"],
+  },
+  otherTenant: {
+    subject: "globex-admin",
+    organization: "globex",
+    scopes: ALL,
+    applications: ["*"],
+  },
 };
 
 type Call = (
@@ -42,6 +63,8 @@ type Call = (
 // Only the fields these tests read; a wrong shape fails the assertion, not the type.
 type Json = {
   id: string;
+  code?: string;
+  message?: string;
   subject?: string;
   scopes?: string[];
   applications?: string[];
@@ -130,8 +153,8 @@ test(
       assert.equal("storeId" in crm.body || "store_id" in crm.body, false);
 
       const resolver = createResolver(lookup, apiUrl as string);
-      const a = await resolver.resolve("crm-prod");
-      const b = await resolver.resolve(hr.body.id);
+      const a = await resolver.resolve("acme", "crm-prod");
+      const b = await resolver.resolve("acme", hr.body.id);
       assert.notEqual(a.storeId, b.storeId);
       assert.notEqual(a.modelId, b.modelId);
 
@@ -143,6 +166,28 @@ test(
         "SELECT count(*)::int AS n FROM audit_events WHERE action = 'applications.create'",
       );
       assert.equal(audit.rows[0].n, 2);
+    }),
+);
+
+test(
+  "an application ID registers only if the check routes can accept it",
+  opts,
+  () =>
+    withApp(async (call, _pool, lookup) => {
+      const longest = await call("admin", "POST", "/v1/applications", {
+        name: "a".repeat(58),
+        environment: "prod",
+      });
+      assert.equal(longest.status, 201);
+      assert.equal(longest.body.id.length, 63);
+      const resolver = createResolver(lookup, apiUrl as string);
+      assert.ok(await resolver.resolve("acme", longest.body.id));
+
+      const tooLong = await call("admin", "POST", "/v1/applications", {
+        name: "a".repeat(59),
+        environment: "prod",
+      });
+      assert.equal(tooLong.status, 400);
     }),
 );
 
@@ -181,6 +226,73 @@ test(
       assert.deepEqual(
         list.body.items.map((a: { id: string }) => a.id),
         ["crm-prod"],
+      );
+    }),
+);
+
+test(
+  "another organization's applications, models and audit are invisible, even to its admin",
+  opts,
+  () =>
+    withApp(async (call, _pool, lookup) => {
+      await call("admin", "POST", "/v1/applications", {
+        name: "crm",
+        environment: "prod",
+      });
+      await call("admin", "POST", "/v1/applications", {
+        name: "hr",
+        environment: "prod",
+      });
+
+      const foreign = await call(
+        "otherTenant",
+        "GET",
+        "/v1/applications/hr-prod",
+      );
+      const missing = await call(
+        "otherTenant",
+        "GET",
+        "/v1/applications/nope-prod",
+      );
+      assert.equal(foreign.status, 404);
+      assert.deepEqual(
+        [foreign.body.code, foreign.body.message],
+        [missing.body.code, missing.body.message],
+      );
+      assert.equal(
+        (await call("otherTenant", "GET", "/v1/models?application=hr-prod"))
+          .status,
+        404,
+      );
+      assert.deepEqual(
+        (await call("otherTenant", "GET", "/v1/applications")).body.items,
+        [],
+      );
+      assert.deepEqual(
+        (await call("otherTenant", "GET", "/v1/audit")).body.items,
+        [],
+      );
+
+      // The same ID in another organization is a separate application with its own store.
+      const own = await call("otherTenant", "POST", "/v1/applications", {
+        name: "crm",
+        environment: "prod",
+      });
+      assert.equal(own.status, 201);
+      const resolver = createResolver(lookup, apiUrl as string);
+      assert.notEqual(
+        (await resolver.resolve("acme", "crm-prod")).storeId,
+        (await resolver.resolve("globex", "crm-prod")).storeId,
+      );
+      assert.deepEqual(
+        (await call("otherTenant", "GET", "/v1/audit")).body.items.map(
+          (e) => e.application,
+        ),
+        ["crm-prod"],
+      );
+      assert.equal(
+        (await call("admin", "GET", "/v1/audit")).body.items.length,
+        2,
       );
     }),
 );

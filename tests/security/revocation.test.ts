@@ -13,8 +13,8 @@ import {
 } from "./harness.js";
 
 // Revocation freshness (RIZ-040): grant -> check -> revoke -> check under each consistency mode,
-// held to the guarantees in docs/architecture.md. riz has no decision cache (RIZ-036 was not
-// built), so there is no cache on/off dimension. Needs RIZ_DATABASE_URL and OPENFGA_API_URL.
+// held to the guarantees in docs/architecture.md. authz has no decision cache (RIZ-036 was not
+// built), so there is no cache on/off dimension. Needs BAE6_DATABASE_URL and OPENFGA_API_URL.
 const PLATFORM = "tok-platform";
 const CHECK = "tok-check";
 const ALICE = "tok-user-alice";
@@ -44,7 +44,7 @@ before(async () => {
   api = await startApi({
     ...files.env,
     OPENFGA_API_URL: required("OPENFGA_API_URL"),
-    RIZ_DATABASE_URL: required("RIZ_DATABASE_URL"),
+    BAE6_DATABASE_URL: required("BAE6_DATABASE_URL"),
   });
   call = client(api.url);
 });

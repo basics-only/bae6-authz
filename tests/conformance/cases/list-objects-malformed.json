@@ -1,0 +1,27 @@
+{
+  "name": "listObjects rejects a success response whose objects are not strings",
+  "call": {
+    "operation": "listObjects",
+    "endUserToken": "alice-token",
+    "action": "read",
+    "type": "document"
+  },
+  "expectRequest": {
+    "method": "POST",
+    "path": "/v1/list-objects"
+  },
+  "nonconformingResponse": true,
+  "response": {
+    "status": 200,
+    "body": {
+      "requestId": "req_l3",
+      "objects": [{ "id": "document:d1" }]
+    }
+  },
+  "expect": {
+    "error": {
+      "type": "AuthzApiError",
+      "code": "invalid_response"
+    }
+  }
+}

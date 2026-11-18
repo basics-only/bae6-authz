@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 export interface Session {
   subject: string;
-  /** Held server-side only; forwarded to the riz API, never sent to the browser. */
+  /** Held server-side only; forwarded to the authz API, never sent to the browser. */
   accessToken: string;
   expiresAt: number;
 }

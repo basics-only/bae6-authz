@@ -16,27 +16,36 @@ import { createRelationshipService } from "./relationships.js";
 import { createAdminService } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 const principals: Record<string, Principal> = {
   platform: {
     subject: "platform",
+    organization: "acme",
     scopes: ["explorer:check"],
     applications: ["*"],
   },
   crmAdmin: {
     subject: "crm-admin",
+    organization: "acme",
     scopes: ["explorer:check"],
     applications: ["crm-prod"],
   },
   // A workload that may run ordinary checks, but not name another principal.
   checker: {
     subject: "checker",
+    organization: "acme",
     scopes: ["check", "relationships:read"],
+    applications: ["*"],
+  },
+  otherTenant: {
+    subject: "globex-platform",
+    organization: "globex",
+    scopes: ["explorer:check"],
     applications: ["*"],
   },
 };
@@ -91,7 +100,7 @@ async function withApp(
       ),
     });
     for (const name of ["crm", "hr"]) {
-      await admin.register("platform", { name, environment: "prod" });
+      await admin.register("platform", "acme", { name, environment: "prod" });
     }
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const { port } = server.address() as AddressInfo;
@@ -110,6 +119,7 @@ async function withApp(
       createRelationshipService({ pool, resolver })
         .write(
           "platform",
+          "acme",
           "crm-prod",
           [{ subject: "user:anne", relation: "member", object: "team:eng" }],
           undefined,
@@ -177,6 +187,17 @@ test(
         (await call("crmAdmin", { ...query, application: "nope-prod" })).status,
         403,
       );
+      assert.deepEqual(await audited(pool), []);
+    }),
+);
+
+test(
+  "an explorer admin of another organization cannot query this one's application",
+  opts,
+  () =>
+    withApp(async ({ call, pool, grant }) => {
+      await grant();
+      assert.equal((await call("otherTenant", query)).status, 404);
       assert.deepEqual(await audited(pool), []);
     }),
 );

@@ -48,7 +48,7 @@ export async function fga<T>(
 
 /**
  * Tuples live only in the application's OpenFGA store, written at its pinned model, which
- * is also what validates them: riz keeps no copy and no second validator.
+ * is also what validates them: authz keeps no copy and no second validator.
  */
 export function createRelationshipService(deps: {
   pool: pg.Pool;
@@ -64,6 +64,7 @@ export function createRelationshipService(deps: {
    */
   async function audited(
     actor: string,
+    organization: string,
     application: string,
     action: string,
     detail: Record<string, unknown>,
@@ -75,6 +76,7 @@ export function createRelationshipService(deps: {
       await db.query("BEGIN");
       const auditEventId = await recordAudit(db, {
         actor,
+        organization,
         action,
         applicationId: application,
         requestId,
@@ -93,11 +95,12 @@ export function createRelationshipService(deps: {
 
   return {
     async list(
+      organization: string,
       application: string,
       filter: { object?: string | undefined; relation?: string | undefined },
       page: { cursor?: string | undefined; limit: number },
     ): Promise<Page<Relationship>> {
-      const client = await resolver.clientFor(application);
+      const client = await resolver.clientFor(organization, application);
       const { tuples, continuation_token } = await fga(
         () =>
           client.read(
@@ -124,13 +127,15 @@ export function createRelationshipService(deps: {
 
     async write(
       actor: string,
+      organization: string,
       application: string,
       relationships: Relationship[],
       requestId?: string,
     ): Promise<string> {
-      const client = await resolver.clientFor(application);
+      const client = await resolver.clientFor(organization, application);
       return audited(
         actor,
+        organization,
         application,
         "relationships.write",
         { before: null, after: relationships },
@@ -148,13 +153,15 @@ export function createRelationshipService(deps: {
 
     async remove(
       actor: string,
+      organization: string,
       application: string,
       relationship: Relationship,
       requestId?: string,
     ): Promise<string> {
-      const client = await resolver.clientFor(application);
+      const client = await resolver.clientFor(organization, application);
       return audited(
         actor,
+        organization,
         application,
         "relationships.delete",
         { before: relationship, after: null },

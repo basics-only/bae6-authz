@@ -5,6 +5,7 @@ import { after, before, test } from "node:test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import {
   ALICE_READS,
+  adminStore,
   type Call,
   client,
   fixtureFiles,
@@ -17,10 +18,10 @@ import {
 } from "./harness.js";
 
 // Unsafe identity assertions (RIZ-043): every unverified way of claiming an identity is refused,
-// against the real API in OIDC mode with a local issuer. Needs RIZ_DATABASE_URL and
+// against the real API in OIDC mode with a local issuer. Needs BAE6_DATABASE_URL and
 // OPENFGA_API_URL. The issuer here is a local test double; real IdPs are unverified.
 const ISSUER = "https://idp.example.test";
-const AUDIENCE = "riz";
+const AUDIENCE = "authz";
 const WORKLOAD = "crm-service";
 const PLATFORM = "tok-platform";
 
@@ -50,7 +51,7 @@ before(async () => {
 
   const common = {
     OPENFGA_API_URL: required("OPENFGA_API_URL"),
-    RIZ_DATABASE_URL: required("RIZ_DATABASE_URL"),
+    BAE6_DATABASE_URL: required("BAE6_DATABASE_URL"),
   };
   // OIDC workloads are granted `check` only, so a fixture-mode API prepares the application.
   const files = fixtureFiles(
@@ -68,10 +69,11 @@ before(async () => {
   setup = client(setupApi.url);
   oidcApi = await startApi({
     ...common,
+    ...(await adminStore()),
     NODE_ENV: "development",
-    RIZ_AUTH_MODE: "oidc",
-    RIZ_OIDC_ISSUERS: JSON.stringify([
-      { issuer: ISSUER, audience: AUDIENCE, jwksUri },
+    BAE6_AUTH_MODE: "oidc",
+    BAE6_OIDC_ISSUERS: JSON.stringify([
+      { issuer: ISSUER, organization: "acme", audience: AUDIENCE, jwksUri },
     ]),
   });
   call = client(oidcApi.url);
@@ -218,7 +220,7 @@ test("a user named in a header or body, or with no end-user token, cannot check"
   const forged = {
     "x-user": "alice",
     "x-forwarded-user": "alice",
-    "riz-end-user": "alice",
+    "authz-end-user": "alice",
     "x-end-user": "alice",
   };
   const noToken = await check(workload, undefined, { headers: forged });
@@ -312,7 +314,7 @@ test("fixture authentication refuses to start in production", async () => {
       ...files.env,
       NODE_ENV: "production",
       OPENFGA_API_URL: required("OPENFGA_API_URL"),
-      RIZ_DATABASE_URL: required("RIZ_DATABASE_URL"),
+      BAE6_DATABASE_URL: required("BAE6_DATABASE_URL"),
     });
     assert.notEqual(run.code, 0);
     assert.equal(run.listening, false);
@@ -325,9 +327,9 @@ test("fixture authentication refuses to start in production", async () => {
 test("the API refuses to start with no authentication mode", async () => {
   const run = await startApiExpectingExit({
     NODE_ENV: "production",
-    RIZ_AUTH_MODE: "",
+    BAE6_AUTH_MODE: "",
     OPENFGA_API_URL: required("OPENFGA_API_URL"),
-    RIZ_DATABASE_URL: required("RIZ_DATABASE_URL"),
+    BAE6_DATABASE_URL: required("BAE6_DATABASE_URL"),
   });
   assert.notEqual(run.code, 0);
   assert.equal(run.listening, false);

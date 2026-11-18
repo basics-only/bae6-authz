@@ -111,6 +111,7 @@ export function relationshipRoutes(service: RelationshipService) {
           res,
           200,
           await service.list(
+            principal.organization,
             application,
             { object, relation },
             pageParams(url),
@@ -136,11 +137,12 @@ export function relationshipRoutes(service: RelationshipService) {
         permit(principal, application);
         const auditEventId = await service.write(
           principal.subject,
+          principal.organization,
           application,
           relationships,
           requestIdOf(res),
         );
-        res.setHeader("riz-audit-event-id", auditEventId);
+        res.setHeader("bae6-audit-event-id", auditEventId);
         res.statusCode = 204;
         res.end();
       } else if (req.method === "DELETE") {
@@ -154,11 +156,12 @@ export function relationshipRoutes(service: RelationshipService) {
         permit(principal, application);
         const auditEventId = await service.remove(
           principal.subject,
+          principal.organization,
           application,
           relationship,
           requestIdOf(res),
         );
-        res.setHeader("riz-audit-event-id", auditEventId);
+        res.setHeader("bae6-audit-event-id", auditEventId);
         res.statusCode = 204;
         res.end();
       } else {

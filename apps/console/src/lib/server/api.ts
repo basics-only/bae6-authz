@@ -11,7 +11,7 @@ export class ApiError extends Error {
 }
 
 /**
- * Calls the riz API as the logged-in user. The console never talks to OpenFGA or
+ * Calls the authz API as the logged-in user. The console never talks to OpenFGA or
  * Postgres; every decision, including "may this user see this", is the API's.
  */
 export async function apiJson<T>(
@@ -62,7 +62,7 @@ export async function apiMutation(
   let auditEventId: string | null = null;
   const body = await apiJson(apiUrl, session, path, init, async (url, opts) => {
     const res = await fetchImpl(url, opts);
-    auditEventId = res.headers.get("riz-audit-event-id");
+    auditEventId = res.headers.get("bae6-audit-event-id");
     return res;
   });
   return { auditEventId, body };

@@ -20,7 +20,7 @@
   },
   "expect": {
     "error": {
-      "type": "RizApiError",
+      "type": "AuthzApiError",
       "status": 404,
       "code": "not_found",
       "requestId": "req_8"

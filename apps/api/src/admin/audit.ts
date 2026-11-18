@@ -3,6 +3,7 @@ import { InvalidCursor, type Page, type PageParams } from "./service.js";
 
 export interface AuditEvent {
   actor: string;
+  organization: string;
   action: string;
   applicationId?: string | undefined;
   requestId?: string | undefined;
@@ -30,11 +31,13 @@ export async function recordAudit(
   e: AuditEvent,
 ): Promise<string> {
   const { rows } = await db.query(
-    `INSERT INTO audit_events (actor, action, application_id, outcome, request_id, detail)
-     VALUES ($1, $2, $3, 'success', $4, $5)
+    `INSERT INTO audit_events
+       (actor, organization_id, action, application_id, outcome, request_id, detail)
+     VALUES ($1, $2, $3, $4, 'success', $5, $6)
      RETURNING id`,
     [
       e.actor,
+      e.organization,
       e.action,
       e.applicationId ?? null,
       e.requestId ?? null,
@@ -57,11 +60,13 @@ export interface AuditFilter {
 }
 
 /**
- * Newest first. `allowed` is the caller's application allow-list (`*` sees every event);
- * the filter only narrows it, so asking for another application returns nothing.
+ * Newest first, within the caller's organization. `allowed` is the caller's application
+ * allow-list (`*` sees every event of the organization); the filter only narrows it, so
+ * asking for another application returns nothing.
  */
 export async function listAudit(
   pool: pg.Pool,
+  organization: string,
   allowed: readonly string[],
   page: PageParams,
   filter: AuditFilter = {},
@@ -74,7 +79,8 @@ export async function listAudit(
   const { rows } = await pool.query(
     `SELECT id, time, actor, action, application_id, outcome, request_id, detail
        FROM audit_events
-      WHERE ($1::boolean OR application_id = ANY($2))
+      WHERE organization_id = $10
+        AND ($1::boolean OR application_id = ANY($2))
         AND ($3::bigint IS NULL OR id < $3)
         AND ($5::text IS NULL OR application_id = $5)
         AND ($6::timestamptz IS NULL OR time >= $6)
@@ -92,6 +98,7 @@ export async function listAudit(
       filter.to ?? null,
       filter.actor ?? null,
       filter.action ?? null,
+      organization,
     ],
   );
   const kept = rows.slice(0, page.limit);

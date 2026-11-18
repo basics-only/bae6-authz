@@ -16,33 +16,48 @@ import { createModelService } from "./models.js";
 import { createAdminService } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 const principals: Record<string, Principal> = {
   platform: {
     subject: "platform",
+    organization: "acme",
     scopes: ["models:write"],
     applications: ["*"],
   },
   crmAdmin: {
     subject: "crm-admin",
+    organization: "acme",
     scopes: ["models:write"],
     applications: ["crm-prod"],
   },
   hrAdmin: {
     subject: "hr-admin",
+    organization: "acme",
     scopes: ["models:write"],
     applications: ["hr-prod"],
   },
-  noScope: { subject: "ns", scopes: ["models:read"], applications: ["*"] },
+  noScope: {
+    subject: "ns",
+    organization: "acme",
+    scopes: ["models:read"],
+    applications: ["*"],
+  },
   crmReader: {
     subject: "crm-reader",
+    organization: "acme",
     scopes: ["models:read"],
     applications: ["crm-prod"],
+  },
+  otherTenant: {
+    subject: "globex-platform",
+    organization: "globex",
+    scopes: ["models:write", "models:read"],
+    applications: ["*"],
   },
 };
 
@@ -138,7 +153,7 @@ async function withApp(
       baseModel: transformer.transformDSLToJSONObject(base),
     });
     for (const name of ["crm", "hr"]) {
-      await admin.register("platform", { name, environment: "prod" });
+      await admin.register("platform", "acme", { name, environment: "prod" });
     }
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const { port } = server.address() as AddressInfo;
@@ -169,7 +184,7 @@ async function withApp(
     const bobCanRead = async (application: string) =>
       (
         await (
-          await resolver.clientFor(application)
+          await resolver.clientFor("acme", application)
         ).check(
           { user: "user:bob", relation: "read", object: "document:d" },
           { consistency: ConsistencyPreference.HigherConsistency },
@@ -177,7 +192,7 @@ async function withApp(
       ).allowed === true;
     // Live tuples, written straight to the application's store at its pinned model.
     const seed = async (application: string) => {
-      await (await resolver.clientFor(application)).write({
+      await (await resolver.clientFor("acme", application)).write({
         writes: fixtureTuples.map((t) => ({
           user: t.subject,
           relation: t.relation,
@@ -366,6 +381,35 @@ test(
     }),
 );
 
+test(
+  "a model admin of another organization cannot read, submit or roll back this one's models",
+  opts,
+  () =>
+    withApp(async ({ call, get, pool, activeModel }) => {
+      const before = await activeModel("crm-prod");
+      assert.equal(
+        (await get("otherTenant", `/v1/models/${before}?application=crm-prod`))
+          .status,
+        404,
+      );
+      assert.equal(
+        (await call("otherTenant", "/v1/models", submit(tight, false))).status,
+        404,
+      );
+      assert.equal(
+        (
+          await call("otherTenant", "/v1/models/rollback", {
+            application: "crm-prod",
+            modelId: before,
+          })
+        ).status,
+        404,
+      );
+      assert.equal(await activeModel("crm-prod"), before);
+      assert.equal((await modelEvents(pool)).rowCount, 0);
+    }),
+);
+
 test("a binding whose audit write fails is not changed", opts, () =>
   withApp(async ({ call, pool, activeModel, bobCanRead, seed }) => {
     await seed("crm-prod");
@@ -519,7 +563,7 @@ test(
         "define admin: [user, user:*]\n    define member",
       );
       assert.notEqual(weakened, base);
-      const found = await dbLookup(pool)("crm-prod");
+      const found = await dbLookup(pool)("acme", "crm-prod");
       const { authorization_model_id: legacy } = await new OpenFgaClient({
         apiUrl: apiUrl as string,
         storeId: (found as { storeId: string }).storeId,
@@ -527,7 +571,7 @@ test(
         transformer.transformDSLToJSONObject(weakened),
       );
       await pool.query(
-        "INSERT INTO model_bindings (application_id, model_id, active) VALUES ('crm-prod', $1, false)",
+        "INSERT INTO model_bindings (organization_id, application_id, model_id, active) VALUES ('acme', 'crm-prod', $1, false)",
         [legacy],
       );
 

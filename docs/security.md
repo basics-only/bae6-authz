@@ -1,6 +1,6 @@
 # Threat model
 
-riz decides whether a caller may do something, so the main harm is a wrong **allow**. This
+bae6-authz decides whether a caller may do something, so the main harm is a wrong **allow**. This
 page lists what is protected, where trust changes hands, how the system fails, and which
 test backs each mitigation. A threat with no test is listed under [Not mitigated](#not-mitigated-or-unverified).
 
@@ -12,16 +12,16 @@ test backs each mitigation. A threat with no test is listed under [Not mitigated
 | Tuples and models | Per-application OpenFGA stores; changing them changes who gets in. |
 | Workload bindings | Decide which applications a workload may check. |
 | Audit log | Evidence of every mutation; must not be bypassed or forged. |
-| Credentials | Workload and end-user tokens, admin tokens, database and OpenFGA passwords, Databricks user tokens. None may be logged or stored by riz. |
+| Credentials | Workload and end-user tokens, admin tokens, database and OpenFGA passwords, Databricks user tokens. None may be logged or stored by bae6-authz. |
 
 ## Trust boundaries
 
 1. **Workload or SDK to API.** Everything a caller sends is untrusted until a token is
-   verified. TLS is terminated outside riz.
+   verified. TLS is terminated outside bae6-authz.
 2. **Browser to console to API.** The console holds the session; the API still authorizes every call.
 3. **API to OpenFGA** and **API to Postgres.** Trusted, but may be down, slow or partitioned.
 4. **API to the identity provider's key set.** Fetched over https (http only for localhost).
-5. **SDK to Databricks.** The user's own token goes straight to Databricks, never through riz.
+5. **SDK to Databricks.** The user's own token goes straight to Databricks, never through bae6-authz.
 
 Out of scope: a compromised identity provider, platform administrator, or host running
 Postgres or OpenFGA; supply-chain compromise (reviewed with the release milestone).
@@ -31,13 +31,13 @@ Postgres or OpenFGA; supply-chain compromise (reviewed with the release mileston
 - **No decision means no allow.** A timeout, a refused or reset connection, an unreachable
   database, and a failed or missing batch item all answer `indeterminate` (`timeout`,
   `backend_error`). An application with no active model answers `no_active_model`, but no
-  test covers that path yet. The SDKs raise `RizIndeterminateError`
+  test covers that path yet. The SDKs raise `AuthzIndeterminateError`
   and never resolve to allow.
 - **Mutations fail whole.** An unreachable OpenFGA is a 503 and leaves no audit event; a
   mutation whose audit write fails is rolled back.
 - **Authentication errors are not outages.** An unreachable key set throws, so the request
   fails; it is never treated as "token valid".
-- **Startup refuses unsafe configuration.** No `RIZ_AUTH_MODE`, or fixture authentication
+- **Startup refuses unsafe configuration.** No `BAE6_AUTH_MODE`, or fixture authentication
   with `NODE_ENV=production`, stops the process.
 - **Scope and allow-list are decided before the application is looked up**, so a 403 does
   not reveal whether an application exists.
@@ -47,7 +47,7 @@ Postgres or OpenFGA; supply-chain compromise (reviewed with the release mileston
 Replicas hold no decision state ([ADR 0009](decisions/0009-multi-replica.md)). A replica
 that loses OpenFGA or Postgres answers `indeterminate` for itself and fails readiness so
 the load balancer drains it. It does not ask another replica, serve a cached decision, or
-use a local copy of the tuples. riz has no decision cache (RIZ-036 was not built), so there
+use a local copy of the tuples. bae6-authz has no decision cache (RIZ-036 was not built), so there
 is nothing stale to serve. Staleness comes only from OpenFGA's own caches, and
 `higher_consistency` bypasses them ([architecture](architecture.md#revocation-freshness)).
 
@@ -119,20 +119,20 @@ path only; `redact` masks credential keys and bearer text; errors never echo cre
 
 ### T8 Databricks credential misuse
 
-*A service credential is used where the user's was required, or the user's token goes elsewhere.* Mitigation: user-delegated tokens only; no fallback to another header, a service principal or an empty result; the workspace host is a bare https host name; no redirect is followed; riz stores no credentials ([ADR 0007](decisions/0007-databricks-provider.md)).
+*A service credential is used where the user's was required, or the user's token goes elsewhere.* Mitigation: user-delegated tokens only; no fallback to another header, a service principal or an empty result; the workspace host is a bare https host name; no redirect is followed; bae6-authz stores no credentials ([ADR 0007](decisions/0007-databricks-provider.md)).
 
 - `sdks/typescript/src/databricks.test.ts` and `sdks/python/tests/test_databricks.py`: refuses without a user token, no fallback, no redirect, unsafe hosts rejected, transport errors carry no token, a user without a grant is denied.
 - `apps/api/src/providers/providers.test.ts` ("credentials, URLs and unknown fields are refused and nothing is stored").
 
 ## Not mitigated or unverified
 
-- **Admin routes use token scopes, not the OpenFGA admin model** ([ADR 0004](decisions/0004-admin-authorization.md)). The boundary between administrators is the token's scopes and allow-list. Moving it onto the admin model is future work.
+- **Admin routes follow organization roles in the bae6-admin store only** ([ADR 0004](decisions/0004-admin-authorization.md)) when `BAE6_AUTH_MODE=oidc`. Application-level admin roles are not enforced yet, and an admin role belongs to a client and applies only to tokens carrying the issuer's `adminAudience`, so keep that audience out of user logins.
 - **A user token stays valid until `exp`** ([ADR 0003](decisions/0003-end-user-delegation.md)); a workload can present its own token as the user token and then checks as itself. Short token lifetimes are the control.
 - **OpenFGA's default consistency can be stale**; no test asserts how stale because it depends on its cache settings.
-- **The `higher_consistency` tests are weak on an uncached OpenFGA.** CI's OpenFGA has no check cache, so `revocation.test.ts` would still pass if riz stopped forwarding the consistency option. It proves the end-to-end answer, not that the option is forwarded.
+- **The `higher_consistency` tests are weak on an uncached OpenFGA.** CI's OpenFGA has no check cache, so `revocation.test.ts` would still pass if bae6-authz stopped forwarding the consistency option. It proves the end-to-end answer, not that the option is forwarded.
 - **A timed-out OpenFGA request is abandoned, not cancelled**, so a slow OpenFGA still receives the work.
 - **No rate limiting** and no shared state to hold one across replicas.
-- **The API image runs as root and does not handle SIGTERM**; the Kubernetes manifests assume uid 1000. Console sessions are in memory ([ADR 0006](decisions/0006-console-session.md)).
+- **The API image runs as root**; the Kubernetes manifests assume uid 1000. Console sessions are in memory ([ADR 0006](decisions/0006-console-session.md)).
 - **Unverified against real infrastructure:** a real identity provider (the tests use a local issuer), a real Databricks workspace (`test_unverified_real_unity_catalog_denies_a_user_without_a_grant` is skipped), console login against a real IdP, and applying the Kubernetes manifests to a cluster.
 - **The fault injection is a TCP proxy** in the test process, not a compose profile. It cuts or blackholes connections but does not model a database that answers wrongly.
 
@@ -141,8 +141,8 @@ path only; `redact` masks credential keys and bearer text; errors never echo cre
 With Postgres and OpenFGA reachable (CI uses a Postgres service and an in-memory OpenFGA):
 
 ```
-RIZ_DATABASE_URL=postgres://... OPENFGA_API_URL=http://localhost:8081 \
-  pnpm --filter @riz/security test:security
+BAE6_DATABASE_URL=postgres://... OPENFGA_API_URL=http://localhost:8081 \
+  pnpm --filter @bae6/authz-security test:security
 ```
 
 Each file starts the API from `apps/api/src` as a child process, so the production wiring is what is tested.

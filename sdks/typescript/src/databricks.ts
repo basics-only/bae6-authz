@@ -4,12 +4,12 @@
  * Unity Catalog decides what the user may read. The user's own delegated token is the only
  * credential this module sends; there is no service-principal or shared-token fallback.
  */
-import { RizError } from "./index.js";
+import { AuthzError } from "./index.js";
 
 /** Databricks Apps forwards the signed-in user's token in this header. */
 export const FORWARDED_TOKEN_HEADER = "x-forwarded-access-token";
 
-// The same shape the riz API accepts: a bare lower-case host, so no scheme, port, path or
+// The same shape the authz API accepts: a bare lower-case host, so no scheme, port, path or
 // userinfo rides along. shortcut: any DNS name passes, so the caller must trust where the
 // host comes from; restrict to Databricks suffixes or an allow-list if it is ever untrusted.
 const HOST =
@@ -17,10 +17,10 @@ const HOST =
 const DENIED_CODES = new Set(["PERMISSION_DENIED", "UNAUTHENTICATED"]);
 
 /** No delegated user token was available. Nothing was sent to Databricks. */
-export class MissingUserCredentialError extends RizError {}
+export class MissingUserCredentialError extends AuthzError {}
 
 /** Databricks did not return a result. `status` is 0 when it was not reached. */
-export class DatabricksError extends RizError {
+export class DatabricksError extends AuthzError {
   constructor(
     readonly status: number,
     readonly code: string | undefined,

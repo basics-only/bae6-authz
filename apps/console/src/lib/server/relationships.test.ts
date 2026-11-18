@@ -17,7 +17,7 @@ test("apiMutation returns the audit event id the API put in the header", async (
   const fetchImpl = (async () =>
     new Response(null, {
       status: 204,
-      headers: { "riz-audit-event-id": "evt-1" },
+      headers: { "bae6-audit-event-id": "evt-1" },
     })) as typeof fetch;
   const result = await apiMutation(
     "http://api",

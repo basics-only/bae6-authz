@@ -20,7 +20,7 @@
   },
   "expect": {
     "error": {
-      "type": "RizAuthError",
+      "type": "AuthzAuthError",
       "status": 403,
       "code": "forbidden",
       "requestId": "req_6"

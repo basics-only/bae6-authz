@@ -16,23 +16,50 @@ import { createRelationshipService } from "./relationships.js";
 import { createAdminService } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 const WRITE = ["relationships:read", "relationships:write"];
 const principals: Record<string, Principal> = {
-  platform: { subject: "platform", scopes: WRITE, applications: ["*"] },
-  crmAdmin: { subject: "crm-admin", scopes: WRITE, applications: ["crm-prod"] },
-  hrAdmin: { subject: "hr-admin", scopes: WRITE, applications: ["hr-prod"] },
+  platform: {
+    subject: "platform",
+    organization: "acme",
+    scopes: WRITE,
+    applications: ["*"],
+  },
+  crmAdmin: {
+    subject: "crm-admin",
+    organization: "acme",
+    scopes: WRITE,
+    applications: ["crm-prod"],
+  },
+  hrAdmin: {
+    subject: "hr-admin",
+    organization: "acme",
+    scopes: WRITE,
+    applications: ["hr-prod"],
+  },
   readOnly: {
     subject: "reader",
+    organization: "acme",
     scopes: ["relationships:read"],
     applications: ["crm-prod"],
   },
-  noScope: { subject: "ns", scopes: [], applications: ["*"] },
+  noScope: {
+    subject: "ns",
+    organization: "acme",
+    scopes: [],
+    applications: ["*"],
+  },
+  otherTenant: {
+    subject: "globex-platform",
+    organization: "globex",
+    scopes: WRITE,
+    applications: ["*"],
+  },
 };
 
 type Call = (
@@ -98,7 +125,7 @@ async function withApp(
       ),
     });
     for (const name of ["crm", "hr"]) {
-      await admin.register("platform", { name, environment: "prod" });
+      await admin.register("platform", "acme", { name, environment: "prod" });
     }
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const { port } = server.address() as AddressInfo;
@@ -114,7 +141,7 @@ async function withApp(
       return {
         status: res.status,
         body: await res.json().catch(() => null),
-        auditEventId: res.headers.get("riz-audit-event-id"),
+        auditEventId: res.headers.get("bae6-audit-event-id"),
       };
     };
     await fn({ call, pool, resolver });
@@ -132,7 +159,7 @@ const isMember = async (
 ) =>
   (
     await (
-      await resolver.clientFor(application)
+      await resolver.clientFor("acme", application)
     ).check(
       { user: "user:anne", relation: "member", object: "team:eng" },
       { consistency: ConsistencyPreference.HigherConsistency },
@@ -202,6 +229,32 @@ test(
         "SELECT count(*)::int AS n FROM audit_events WHERE action LIKE 'relationships.%'",
       );
       assert.equal(rows[0].n, 0);
+    }),
+);
+
+test(
+  "a relationship admin of another organization cannot list, grant or revoke here",
+  opts,
+  () =>
+    withApp(async ({ call, resolver, pool }) => {
+      await call("crmAdmin", "POST", "/v1/relationships", write([tuple]));
+      const attempts: [string, string, unknown?][] = [
+        ["POST", "/v1/relationships", write([tuple])],
+        ["DELETE", deletePath()],
+        ["GET", "/v1/relationships?application=crm-prod"],
+      ];
+      for (const [method, path, body] of attempts) {
+        assert.equal(
+          (await call("otherTenant", method, path, body)).status,
+          404,
+          `${method} ${path}`,
+        );
+      }
+      assert.equal(await isMember(resolver, "crm-prod"), true);
+      const { rows } = await pool.query(
+        "SELECT count(*)::int AS n FROM audit_events WHERE action LIKE 'relationships.%'",
+      );
+      assert.equal(rows[0].n, 1);
     }),
 );
 
@@ -337,11 +390,11 @@ test("an unreachable OpenFGA is a 503 and leaves no audit event", opts, () =>
         "http://127.0.0.1:1",
       ),
     });
-    await assert.rejects(down.write("crm-admin", "crm-prod", [tuple]), {
+    await assert.rejects(down.write("crm-admin", "acme", "crm-prod", [tuple]), {
       status: 503,
       code: "authorization_unavailable",
     });
-    await assert.rejects(down.list("crm-prod", {}, { limit: 10 }), {
+    await assert.rejects(down.list("acme", "crm-prod", {}, { limit: 10 }), {
       status: 503,
     });
     const { rows } = await pool.query(

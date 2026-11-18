@@ -2,7 +2,7 @@
 
 ## Decision
 
-Unity Catalog stays the only authority over Databricks data. riz decides whether an
+Unity Catalog stays the only authority over Databricks data. bae6-authz decides whether an
 *application* may offer a feature; Databricks decides what a *user* may read.
 
 1. **User-delegated credentials only.** A query runs with the end user's own token: the
@@ -12,7 +12,7 @@ Unity Catalog stays the only authority over Databricks data. riz decides whether
    an empty result.
 2. **No mirroring.** Unity Catalog grants are not copied into OpenFGA. A copy would go
    stale and could allow what Databricks denies; instead both checks must pass, and a user
-   without a Unity Catalog grant is refused by Databricks even when riz allows.
+   without a Unity Catalog grant is refused by Databricks even when bae6-authz allows.
 3. **Provider configuration holds non-secret settings only.** The `provider_configs` table
    stores `{workspaceHost, warehouseId}` per application and provider. Credentials are
    never stored there, accepted by the API, or returned.

@@ -9,10 +9,10 @@ function required(name: string): string {
 }
 
 export const sessions = createSessionStore();
-export const SESSION_COOKIE = "riz_session";
-export const LOGIN_COOKIE = "riz_login";
+export const SESSION_COOKIE = "authz_session";
+export const LOGIN_COOKIE = "authz_login";
 
-export const apiUrl = () => required("RIZ_API_URL").replace(/\/$/, "");
+export const apiUrl = () => required("BAE6_API_URL").replace(/\/$/, "");
 
 export const oidcConfig = (): OidcConfig => ({
   issuer: required("OIDC_ISSUER"),

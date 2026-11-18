@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
-import { type Consistency, Riz } from "./index.js";
+import { Authz, type Consistency } from "./index.js";
 
 // Runs the shared cases in tests/conformance; see its README for the format.
 const casesDir = join(import.meta.dirname, "../../../tests/conformance/cases");
@@ -15,11 +15,14 @@ type Case = {
   name: string;
   client?: { timeoutMs: number };
   call: {
-    operation: "check" | "batchCheck";
+    operation: "check" | "batchCheck" | "listObjects";
     endUserToken: string;
     consistency?: Consistency;
     action?: string;
     resource?: string;
+    type?: string;
+    limit?: number;
+    cursor?: string;
     checks?: { action: string; resource: string; count?: number }[];
   };
   expectRequest: { method: string; path: string; body?: unknown };
@@ -84,7 +87,7 @@ async function run(c: Case) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 
   try {
-    const riz = new Riz({
+    const authz = new Authz({
       baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
       credentials: BEARER,
       application: "crm",
@@ -95,32 +98,41 @@ async function run(c: Case) {
     let error: unknown;
     try {
       result =
-        call.operation === "check"
-          ? await riz.check({
+        call.operation === "listObjects"
+          ? await authz.listObjects({
               action: call.action as string,
-              resource: call.resource as string,
+              type: call.type as string,
               endUserToken: call.endUserToken,
+              ...(call.limit !== undefined && { limit: call.limit }),
+              ...(call.cursor !== undefined && { cursor: call.cursor }),
               ...(call.consistency && { consistency: call.consistency }),
             })
-          : await riz.batchCheck(
-              (call.checks ?? []).flatMap(({ count = 1, ...check }) =>
-                Array.from({ length: count }, () => check),
-              ),
-              {
+          : call.operation === "check"
+            ? await authz.check({
+                action: call.action as string,
+                resource: call.resource as string,
                 endUserToken: call.endUserToken,
                 ...(call.consistency && { consistency: call.consistency }),
-              },
-            );
+              })
+            : await authz.batchCheck(
+                (call.checks ?? []).flatMap(({ count = 1, ...check }) =>
+                  Array.from({ length: count }, () => check),
+                ),
+                {
+                  endUserToken: call.endUserToken,
+                  ...(call.consistency && { consistency: call.consistency }),
+                },
+              );
     } catch (e) {
       error = e;
     }
 
-    assert.equal(received.length, 1, "exactly one request reaches riz");
+    assert.equal(received.length, 1, "exactly one request reaches authz");
     const [req] = received;
     assert.equal(req?.method, c.expectRequest.method);
     assert.equal(req?.url, c.expectRequest.path);
     assert.equal(req?.headers.authorization, `Bearer ${BEARER}`);
-    assert.equal(req?.headers["riz-end-user-token"], call.endUserToken);
+    assert.equal(req?.headers["bae6-end-user-token"], call.endUserToken);
     assert.match(String(req?.headers["content-type"]), /^application\/json/);
     if (c.expectRequest.body !== undefined) {
       assert.deepEqual(JSON.parse(req?.body ?? ""), c.expectRequest.body);

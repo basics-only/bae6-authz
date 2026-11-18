@@ -21,7 +21,7 @@ export interface Assertion extends Relationship {
 export class InvalidModel extends Error {}
 /** The model parsed, but its assertions do not hold; the binding is not changed. */
 export class AssertionsFailed extends Error {}
-/** The model drops, repeats or changes a core type, which only riz may define. */
+/** The model drops, repeats or changes a core type, which only authz may define. */
 export class CoreViolated extends Error {}
 export class ModelNotFound extends Error {}
 export class ModelAlreadyActive extends Error {}
@@ -45,7 +45,7 @@ export function createModelService(deps: {
   lookup: Lookup;
   apiUrl: string;
   /**
-   * The riz core model (DSL). When set, every submitted model must contain each core
+   * The authz core model (DSL). When set, every submitted model must contain each core
    * type exactly once and unchanged, and an application may submit just an extension.
    */
   core?: string;
@@ -135,7 +135,7 @@ export function createModelService(deps: {
     const { id: storeId } = await fga(
       () =>
         new OpenFgaClient({ apiUrl }).createStore({
-          name: `riz-validate-${randomUUID()}`,
+          name: `authz-validate-${randomUUID()}`,
         }),
       invalid,
     );
@@ -179,7 +179,7 @@ export function createModelService(deps: {
         throw new AssertionsFailed(`Assertions failed: #${failed.join(", #")}`);
       }
     } finally {
-      // shortcut: a failed delete leaves an inert riz-validate-* store; add a janitor
+      // shortcut: a failed delete leaves an inert authz-validate-* store; add a janitor
       // when scratch stores start to accumulate.
       await new OpenFgaClient({ apiUrl, storeId })
         .deleteStore()
@@ -190,6 +190,7 @@ export function createModelService(deps: {
   /** Swaps the active binding under a lock on the application, with its audit event. */
   async function bind(
     actor: string,
+    organization: string,
     application: string,
     modelId: string,
     action: "models.bind" | "models.rollback",
@@ -200,40 +201,44 @@ export function createModelService(deps: {
     try {
       await db.query("BEGIN");
       const locked = await db.query(
-        "SELECT 1 FROM applications WHERE id = $1 FOR UPDATE",
-        [application],
+        "SELECT 1 FROM applications WHERE organization_id = $1 AND id = $2 FOR UPDATE",
+        [organization, application],
       );
       if (!locked.rowCount) throw new ApplicationNotFound(application);
 
       const prior = (
         await db.query<{ model_id: string }>(
-          "SELECT model_id FROM model_bindings WHERE application_id = $1 AND active",
-          [application],
+          `SELECT model_id FROM model_bindings
+            WHERE organization_id = $1 AND application_id = $2 AND active`,
+          [organization, application],
         )
       ).rows[0]?.model_id;
       if (prior === modelId) throw new ModelAlreadyActive();
 
       if (mustExist) {
         const known = await db.query(
-          "SELECT 1 FROM model_bindings WHERE application_id = $1 AND model_id = $2",
-          [application, modelId],
+          `SELECT 1 FROM model_bindings
+            WHERE organization_id = $1 AND application_id = $2 AND model_id = $3`,
+          [organization, application, modelId],
         );
         if (!known.rowCount) throw new ModelNotFound();
       }
 
       await db.query(
-        "UPDATE model_bindings SET active = false WHERE application_id = $1 AND active",
-        [application],
+        `UPDATE model_bindings SET active = false
+          WHERE organization_id = $1 AND application_id = $2 AND active`,
+        [organization, application],
       );
       const { rows } = await db.query(
-        `INSERT INTO model_bindings (application_id, model_id, active)
-         VALUES ($1, $2, true)
-         ON CONFLICT (application_id, model_id) DO UPDATE SET active = true
+        `INSERT INTO model_bindings (organization_id, application_id, model_id, active)
+         VALUES ($1, $2, $3, true)
+         ON CONFLICT (organization_id, application_id, model_id) DO UPDATE SET active = true
          RETURNING model_id, bound_at, active`,
-        [application, modelId],
+        [organization, application, modelId],
       );
       await recordAudit(db, {
         actor,
+        organization,
         action,
         applicationId: application,
         requestId,
@@ -253,13 +258,18 @@ export function createModelService(deps: {
   }
 
   /** A model this application has been bound to, as stored. */
-  async function stored(application: string, modelId: string) {
-    const found = await lookup(application);
+  async function stored(
+    organization: string,
+    application: string,
+    modelId: string,
+  ) {
+    const found = await lookup(organization, application);
     if (!found) throw new ApplicationNotFound(application);
     // Only models bound to this application: its store may hold others.
     const known = await pool.query(
-      "SELECT 1 FROM model_bindings WHERE application_id = $1 AND model_id = $2",
-      [application, modelId],
+      `SELECT 1 FROM model_bindings
+        WHERE organization_id = $1 AND application_id = $2 AND model_id = $3`,
+      [organization, application, modelId],
     );
     if (!known.rowCount) throw new ModelNotFound();
     const { authorization_model: model } = await fga(
@@ -276,13 +286,20 @@ export function createModelService(deps: {
 
   return {
     /** The DSL of a model this application has been bound to, for comparing versions. */
-    async read(application: string, modelId: string): Promise<string> {
-      return transformer.transformJSONToDSL(await stored(application, modelId));
+    async read(
+      organization: string,
+      application: string,
+      modelId: string,
+    ): Promise<string> {
+      return transformer.transformJSONToDSL(
+        await stored(organization, application, modelId),
+      );
     },
 
     /** Validate, assert, write a new immutable model, then bind it. The prior row stays as history. */
     async submit(
       actor: string,
+      organization: string,
       application: string,
       input: {
         model?: string | undefined;
@@ -292,7 +309,7 @@ export function createModelService(deps: {
       },
       requestId?: string,
     ): Promise<ModelEntry> {
-      const found = await lookup(application);
+      const found = await lookup(organization, application);
       if (!found) throw new ApplicationNotFound(application);
 
       const json = parse(compose(input));
@@ -315,7 +332,15 @@ export function createModelService(deps: {
         );
       }
       // If binding fails the new model is inert: nothing resolves an unbound ID.
-      return bind(actor, application, modelId, "models.bind", requestId, false);
+      return bind(
+        actor,
+        organization,
+        application,
+        modelId,
+        "models.bind",
+        requestId,
+        false,
+      );
     },
 
     /**
@@ -324,6 +349,7 @@ export function createModelService(deps: {
      */
     async rollback(
       actor: string,
+      organization: string,
       application: string,
       modelId: string,
       requestId?: string,
@@ -331,12 +357,13 @@ export function createModelService(deps: {
       if (core) {
         // A stored model carries server defaults; the DSL round trip gives the parsed form.
         const dsl = transformer.transformJSONToDSL(
-          await stored(application, modelId),
+          await stored(organization, application, modelId),
         );
         assertCoreIntact(parse(dsl));
       }
       return bind(
         actor,
+        organization,
         application,
         modelId,
         "models.rollback",

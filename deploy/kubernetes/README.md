@@ -5,7 +5,7 @@ OpenFGA. Those two are external dependencies and are not managed here.
 
 | File | Holds |
 | --- | --- |
-| `namespace.yaml` | the `riz` namespace |
+| `namespace.yaml` | the `bae6-authz` namespace |
 | `api.yaml` | API config, Deployment (2 replicas), Service, PodDisruptionBudget, example HPA |
 | `console.yaml` | console config, Deployment (1 replica), Service |
 
@@ -15,31 +15,33 @@ The console has no health route and uses TCP probes.
 
 ## Before applying
 
-1. Edit the placeholders in the two ConfigMaps: `OPENFGA_API_URL`, `RIZ_OIDC_ISSUERS`, and
-   the console's `OIDC_*` values. Hosts ending in `.invalid` are placeholders.
+1. Edit the placeholders in the two ConfigMaps: `OPENFGA_API_URL`, `BAE6_OIDC_ISSUERS`,
+   `BAE6_ADMIN_STORE_ID` and `BAE6_ADMIN_MODEL_ID` (from `bootstrap-admin`, see
+   [ADR 0004](../../docs/decisions/0004-admin-authorization.md)), and the console's `OIDC_*`
+   values. Hosts ending in `.invalid` are placeholders.
 2. Build and publish the images (`deploy/api.Dockerfile`, `deploy/console.Dockerfile`) and
    change the `image:` fields, or load local ones as below.
 3. Create the secrets. Nothing secret is committed:
 
 ```
-kubectl create namespace riz
-kubectl -n riz create secret generic riz-api --from-literal=database-url='postgres://riz:<password>@<host>:5432/riz'
-kubectl -n riz create secret generic riz-console --from-literal=oidc-client-secret='<secret>'
+kubectl create namespace bae6-authz
+kubectl -n bae6-authz create secret generic bae6-authz-api --from-literal=database-url='postgres://authz:<password>@<host>:5432/authz'
+kubectl -n bae6-authz create secret generic bae6-authz-console --from-literal=oidc-client-secret='<secret>'
 ```
 
-Run `pnpm --filter @riz/api migrate` (or let the first replica start; replicas serialize
+Run `pnpm --filter @bae6/authz-api migrate` (or let the first replica start; replicas serialize
 migrations with a lock) against the database before sending traffic.
 
 ## Apply on a local kind cluster
 
 ```
-docker build -f deploy/api.Dockerfile -t riz-api:local .
-docker build -f deploy/console.Dockerfile -t riz-console:local .
-kind create cluster --name riz
-kind load docker-image riz-api:local riz-console:local --name riz
+docker build -f deploy/api.Dockerfile -t bae6-authz-api:local .
+docker build -f deploy/console.Dockerfile -t bae6-authz-console:local .
+kind create cluster --name bae6-authz
+kind load docker-image bae6-authz-api:local bae6-authz-console:local --name bae6-authz
 kubectl apply -f deploy/kubernetes/namespace.yaml
 kubectl apply -f deploy/kubernetes/
-kubectl -n riz rollout status deploy/riz-api
+kubectl -n bae6-authz rollout status deploy/bae6-authz-api
 ```
 
 From kind on Docker Desktop, Postgres and OpenFGA published on the host are reachable as

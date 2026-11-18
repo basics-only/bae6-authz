@@ -6,7 +6,7 @@ Status: accepted
 
 OpenFGA lets a caller omit `authorization_model_id`, in which case it evaluates
 against the store's latest model. Writing a model therefore changes live
-decisions for every caller that omitted the ID. riz treats model changes as
+decisions for every caller that omitted the ID. bae6-authz treats model changes as
 versioned migrations (AGENTS.md principle 11).
 
 ## Decision
@@ -14,7 +14,7 @@ versioned migrations (AGENTS.md principle 11).
 - Every model write creates a new **immutable model ID**. Writing identical
   content twice yields two different IDs; neither is used implicitly.
 - **Every runtime OpenFGA call passes an explicit `authorization_model_id`**,
-  read from the riz database binding for that application and environment. The
+  read from the bae6-authz database binding for that application and environment. The
   resolver refuses to call OpenFGA without one. "Latest" is never used.
 - A new model takes effect only when the binding is changed to its ID, so
   writing a model to an application's store does not alter its decisions.
@@ -34,8 +34,8 @@ aligned with the central roles, use a core + extension instead (ADR 0011).
 ### Tooling (`scripts/`)
 
 ```sh
-pnpm --filter @riz/scripts model validate models/openfga/base.fga
-pnpm --filter @riz/scripts model write models/openfga/base.fga --store-id <id> --api-url <url>
+pnpm --filter @bae6/authz-scripts model validate models/openfga/base.fga
+pnpm --filter @bae6/authz-scripts model write models/openfga/base.fga --store-id <id> --api-url <url>
 ```
 
 Run these from anywhere in the repository; relative paths resolve against where

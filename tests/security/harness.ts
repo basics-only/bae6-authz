@@ -1,12 +1,14 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { connect, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { OpenFgaClient } from "@openfga/sdk";
+import { transformer } from "@openfga/syntax-transformer";
 
 // Black-box harness for the security suite: it starts the real API process (apps/api/src/index.ts)
-// against the Postgres and OpenFGA in RIZ_DATABASE_URL and OPENFGA_API_URL, so what is tested is
+// against the Postgres and OpenFGA in BAE6_DATABASE_URL and OPENFGA_API_URL, so what is tested is
 // the production wiring, not a hand-built app. Fixture tokens are fixed test literals that live
 // only in mode-0600 temp files; they are never the dev values in deploy/fixtures.
 
@@ -114,7 +116,7 @@ export async function startApi(
   const stop = stopper(child);
   const url = `http://127.0.0.1:${port}`;
   const deadline = Date.now() + 60_000;
-  while (!output.join("").includes("riz api listening")) {
+  while (!output.join("").includes("authz api listening")) {
     if (child.exitCode !== null) {
       throw new Error(`API exited early: ${output.join("").slice(-500)}`);
     }
@@ -138,7 +140,11 @@ export async function startApiExpectingExit(
   );
   clearTimeout(timer);
   const text = output.join("");
-  return { code, listening: text.includes("riz api listening"), output: text };
+  return {
+    code,
+    listening: text.includes("authz api listening"),
+    output: text,
+  };
 }
 
 /** Points a dependency URL at a local fault proxy. */
@@ -153,28 +159,37 @@ export async function proxied(url: string, defaultPort: number) {
   return { proxy, url: parsed.toString().replace(/\/$/, "") };
 }
 
+export const ORGANIZATION = "acme";
+
 export interface FixturePrincipal {
   subject: string;
+  organization?: string;
   scopes: string[];
   applications: string[];
 }
 
-/** Writes fixture token files to a private temp directory. */
+/** Writes fixture token files to a private temp directory; principals default to ORGANIZATION. */
 export function fixtureFiles(
   tokens: Record<string, FixturePrincipal>,
   endUsers: Record<string, string>,
 ) {
-  const dir = mkdtempSync(join(tmpdir(), "riz-security-"));
+  const dir = mkdtempSync(join(tmpdir(), "authz-security-"));
   const auth = join(dir, "auth.json");
   const users = join(dir, "end-users.json");
-  writeFileSync(auth, JSON.stringify(tokens), { mode: 0o600 });
+  const withOrg = Object.fromEntries(
+    Object.entries(tokens).map(([t, p]) => [
+      t,
+      { organization: ORGANIZATION, ...p },
+    ]),
+  );
+  writeFileSync(auth, JSON.stringify(withOrg), { mode: 0o600 });
   writeFileSync(users, JSON.stringify(endUsers), { mode: 0o600 });
   return {
     env: {
       NODE_ENV: "development",
-      RIZ_AUTH_MODE: "fixture",
-      RIZ_FIXTURE_AUTH_FILE: auth,
-      RIZ_FIXTURE_END_USERS_FILE: users,
+      BAE6_AUTH_MODE: "fixture",
+      BAE6_FIXTURE_AUTH_FILE: auth,
+      BAE6_FIXTURE_END_USERS_FILE: users,
     },
     dispose: () => rmSync(dir, { recursive: true, force: true }),
   };
@@ -200,7 +215,7 @@ export function client(base: string) {
       method,
       headers: {
         ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}),
-        ...(opts.user ? { "riz-end-user-token": opts.user } : {}),
+        ...(opts.user ? { "bae6-end-user-token": opts.user } : {}),
         "content-type": "application/json",
         ...opts.headers,
       },
@@ -229,3 +244,49 @@ export const readDoc = (application: string, extra: object = {}) => ({
   object: "document:d1",
   ...extra,
 });
+
+/**
+ * A bae6-admin store at the repo's admin model holding `grants`, as the env the API needs in oidc mode.
+ * A workload is named by the SHA-256 of `<issuer>|<workload>`, computed here independently of the API.
+ */
+export async function adminStore(
+  grants: {
+    issuer: string;
+    workload: string;
+    relation: string;
+    organization?: string;
+  }[] = [],
+) {
+  const apiUrl = required("OPENFGA_API_URL");
+  const { id: storeId } = await new OpenFgaClient({ apiUrl }).createStore({
+    name: "bae6-admin-security-test",
+  });
+  const { authorization_model_id: modelId } = await new OpenFgaClient({
+    apiUrl,
+    storeId,
+  }).writeAuthorizationModel(
+    transformer.transformDSLToJSONObject(
+      readFileSync(
+        join(import.meta.dirname, "../../models/openfga/bae6-admin.fga"),
+        "utf8",
+      ),
+    ),
+  );
+  if (!modelId) throw new Error("OpenFGA did not return a model id");
+  if (grants.length > 0) {
+    await new OpenFgaClient({
+      apiUrl,
+      storeId,
+      authorizationModelId: modelId,
+    }).write({
+      writes: grants.map((g) => ({
+        user: `user:${createHash("sha256")
+          .update(JSON.stringify([g.issuer, g.workload]))
+          .digest("hex")}`,
+        relation: g.relation,
+        object: `organization:${g.organization ?? ORGANIZATION}`,
+      })),
+    });
+  }
+  return { BAE6_ADMIN_STORE_ID: storeId, BAE6_ADMIN_MODEL_ID: modelId };
+}

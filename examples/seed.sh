@@ -3,7 +3,7 @@
 # read document:d1. Prints the application ID. Uses the dev-only admin token.
 set -eu
 
-API="${RIZ_API_URL:-http://localhost:8080}"
+API="${BAE6_API_URL:-http://localhost:8080}"
 AUTH="authorization: Bearer dev-admin-token"
 
 app=$(curl -sf -X POST "$API/v1/applications" -H "$AUTH" -H "content-type: application/json" \

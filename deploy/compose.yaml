@@ -1,4 +1,4 @@
-name: riz
+name: bae6-authz
 
 services:
   postgres:
@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set in .env}
       OPENFGA_DB_PASSWORD: ${OPENFGA_DB_PASSWORD:?set in .env}
-      RIZ_DB_PASSWORD: ${RIZ_DB_PASSWORD:?set in .env}
+      BAE6_DB_PASSWORD: ${BAE6_DB_PASSWORD:?set in .env}
     # Loopback only, so host-run tooling (make migrate, API tests) can reach it.
     ports:
       - "127.0.0.1:5432:5432"
@@ -36,8 +36,8 @@ services:
     environment:
       OPENFGA_DATASTORE_ENGINE: postgres
       OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD}@postgres:5432/openfga?sslmode=disable
-      # Off unless RIZ_OPENFGA_TRACE=true; see the observability profile below.
-      OPENFGA_TRACE_ENABLED: ${RIZ_OPENFGA_TRACE:-false}
+      # Off unless BAE6_OPENFGA_TRACE=true; see the observability profile below.
+      OPENFGA_TRACE_ENABLED: ${BAE6_OPENFGA_TRACE:-false}
       OPENFGA_TRACE_OTLP_ENDPOINT: jaeger:4317
     ports:
       - "127.0.0.1:8081:8080"
@@ -52,20 +52,20 @@ services:
     environment:
       PORT: "8080"
       OPENFGA_API_URL: http://openfga:8080
-      RIZ_DATABASE_URL: postgres://riz:${RIZ_DB_PASSWORD:?set in .env}@postgres:5432/riz
+      BAE6_DATABASE_URL: postgres://authz:${BAE6_DB_PASSWORD:?set in .env}@postgres:5432/authz
       # Local development only: the image defaults to production, which refuses fixture auth.
       NODE_ENV: development
-      RIZ_AUTH_MODE: fixture
-      RIZ_FIXTURE_AUTH_FILE: /etc/riz/auth.json
-      RIZ_FIXTURE_END_USERS_FILE: /etc/riz/end-users.json
+      BAE6_AUTH_MODE: fixture
+      BAE6_FIXTURE_AUTH_FILE: /etc/authz/auth.json
+      BAE6_FIXTURE_END_USERS_FILE: /etc/authz/end-users.json
       # Both off when empty. Set them in .env and use --profile observability.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      RIZ_METRICS_PORT: ${RIZ_METRICS_PORT:-}
+      BAE6_METRICS_PORT: ${BAE6_METRICS_PORT:-}
       # Reachable by Prometheus on the compose network only; the port is not published.
-      RIZ_METRICS_HOST: 0.0.0.0
+      BAE6_METRICS_HOST: 0.0.0.0
     volumes:
-      - ./fixtures/auth.json:/etc/riz/auth.json:ro
-      - ./fixtures/end-users.json:/etc/riz/end-users.json:ro
+      - ./fixtures/auth.json:/etc/authz/auth.json:ro
+      - ./fixtures/end-users.json:/etc/authz/end-users.json:ro
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -84,7 +84,7 @@ services:
       - "127.0.0.1:3000:3000"
 
   # Opt-in: docker compose --profile replicas up --build lb
-  # N stateless API replicas (RIZ_REPLICAS, default 2) behind an nginx round-robin LB on
+  # N stateless API replicas (BAE6_REPLICAS, default 2) behind an nginx round-robin LB on
   # 127.0.0.1:8090. The LB tags each response with the replica that served it.
   api-replica:
     <<: *api
@@ -96,7 +96,7 @@ services:
       timeout: 3s
       retries: 30
     deploy:
-      replicas: ${RIZ_REPLICAS:-2}
+      replicas: ${BAE6_REPLICAS:-2}
 
   lb:
     image: nginx:1.27.3-alpine
@@ -111,7 +111,7 @@ services:
         condition: service_healthy
 
   # Opt-in: docker compose --profile observability up. With these in .env:
-  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318  RIZ_METRICS_PORT=9464  RIZ_OPENFGA_TRACE=true
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318  BAE6_METRICS_PORT=9464  BAE6_OPENFGA_TRACE=true
   # Jaeger UI http://127.0.0.1:16686, Prometheus http://127.0.0.1:9090.
   jaeger:
     image: jaegertracing/all-in-one:1.62.0

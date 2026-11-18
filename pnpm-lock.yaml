@@ -115,7 +115,7 @@ importers:
 
   examples/express:
     dependencies:
-      '@riz/sdk':
+      '@bae6/authz':
         specifier: workspace:*
         version: link:../../sdks/typescript
       express:
@@ -176,6 +176,12 @@ importers:
 
   tests/security:
     devDependencies:
+      '@openfga/sdk':
+        specifier: 0.9.7
+        version: 0.9.7
+      '@openfga/syntax-transformer':
+        specifier: 0.2.2
+        version: 0.2.2
       '@types/node':
         specifier: 22.18.10
         version: 22.18.10

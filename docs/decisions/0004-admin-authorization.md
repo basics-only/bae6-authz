@@ -1,54 +1,94 @@
-# 0004 — Authorizing riz's own administration
+# 0004 — Authorizing bae6-authz's own administration
 
 ## Decision
 
 Administrative actions (register an application, manage workload bindings, read audit,
-manage relationships and models) are authorized by OpenFGA in a dedicated **`riz-admin`
+manage relationships and models) are authorized by OpenFGA in a dedicated **`bae6-admin`
 store**, separate from every application store. Check permission (`check` scope, an
 application's own store) never implies any admin permission.
 
-The model is `models/openfga/riz-admin.fga`; its assertions are `riz-admin.tests.yaml`
+The model is `models/openfga/bae6-admin.fga`; its assertions are `bae6-admin.tests.yaml`
 (`make model-test`). Roles:
 
 | Role | Granted by tuple | Can |
 | --- | --- | --- |
-| security admin | `user:<sub> security_admin organization:default` | everything, on every application |
-| auditor | `user:<sub> auditor organization:default` | read applications and audit, mutate nothing |
+| security admin | `user:<sub> security_admin organization:<org>` | everything, on every application of that organization |
+| auditor | `user:<sub> auditor organization:<org>` | read that organization's applications and audit, mutate nothing |
 | application admin | `user:<sub> admin application:<id>` | read, manage relationships and model of that application only |
 
 The API evaluates these through `createAdminAuthorizer` (`apps/api/src/admin/authorizer.ts`)
-at a **pinned model ID** (`RIZ_ADMIN_MODEL_ID`, never "latest"). An OpenFGA outage is a
+at a **pinned model ID** (`BAE6_ADMIN_MODEL_ID`, never "latest"). An OpenFGA outage is a
 503 `authorization_unavailable`; a subject that is not a plain identifier is denied.
+
+## How it reaches the routes (`BAE6_AUTH_MODE=oidc`)
+
+The routes keep checking scopes and the application allow-list. In oidc mode, for every
+request that is not a check, `withAdminScopes` (`apps/api/src/admin/elevate.ts`) adds the
+scopes the caller's **organization** roles carry and widens its allow-list to all
+applications:
+
+| Role | Scopes added |
+| --- | --- |
+| security admin | every admin scope (applications, models, relationships, bindings, audit, providers, explorer) |
+| auditor | `applications:read`, `models:read`, `audit:read` |
+| none, or application admin only | none: the workload keeps `check` on its bound applications and nothing else |
+
+**Only an admin token is elevated.** A client ID alone cannot tell a service account from a
+person signing in through the same client, so the issuer entry in `BAE6_OIDC_ISSUERS` takes
+an `adminAudience`, distinct from `audience`. A token is elevated only if it carries that
+audience, and with no `adminAudience` configured nothing is ever elevated. Configure the IdP
+to put it in tokens for the service accounts that administer bae6-authz, and never in user logins.
+A token with the admin audience but no role in the store gets nothing.
+
+Check requests are decided first and with the principal as authenticated, so the check
+path never waits on the admin store and an admin's reach never carries over to it. The API
+refuses to start in oidc mode without `BAE6_ADMIN_STORE_ID` and `BAE6_ADMIN_MODEL_ID`.
+
+A workload's name in the admin store is the SHA-256 (hex) of the JSON array
+`[issuer, workload]`. The raw pair holds `:` and `/`, which an OpenFGA user ID cannot, and
+hashing keeps two issuers that issue the same client ID apart; JSON keeps a `|` in either
+value from making two pairs collide. The bootstrap command computes it. Only paths under
+`/v1/me`, `applications`, `audit`, `models`, `providers`, `relationships`,
+`workload-bindings` and `explorer` ask the admin store; unknown paths do not.
 
 ## Bootstrap the first security admin
 
-No credentials are baked in; the operator names the first admin.
+No credentials are baked in; the operator names the first admin workload.
 
 ```sh
 OPENFGA_API_URL=http://localhost:8081 \
-  pnpm --filter @riz/scripts exec tsx src/cli.ts bootstrap-admin --admin <subject>
+  pnpm --filter @bae6/authz-scripts exec tsx src/cli.ts bootstrap-admin \
+  --organization <org> --issuer <issuer> --workload <client id>
 ```
 
-It creates the `riz-admin` store, writes and validates the model, writes the
-`security_admin` tuple for `<subject>`, and prints:
+`<org>` is the `organization` of that issuer in `BAE6_OIDC_ISSUERS`: roles are only read on
+the caller's own organization ([contracts ADR 0002](https://github.com/basics-only/bae6-contracts/blob/main/docs/adr/0002-tenant-boundaries.md)).
+
+`--admin <subject>` names a subject directly instead (a plain identifier, such as an
+already-computed hash). The command creates the `bae6-admin` store, writes and validates the model, writes the
+`security_admin` tuple for that workload, and prints:
 
 ```
-RIZ_ADMIN_STORE_ID=...
-RIZ_ADMIN_MODEL_ID=...
+BAE6_ADMIN_STORE_ID=...
+BAE6_ADMIN_MODEL_ID=...
 ```
 
-Set both in the API's environment. It refuses to run when a `riz-admin` store already
+Set both in the API's environment. It refuses to run when a `bae6-admin` store already
 exists. To grant further roles afterwards, write tuples to that store (table above) with
 the OpenFGA CLI or API.
 
-Every application needs a parent tuple `organization:default organization application:<id>`
-in the admin store for org-level roles to reach it.
+Org-level roles reach an application through the API's queries, which are all scoped to
+the caller's organization, not through a parent tuple.
 
 ## Limitations
 
-- The API does not yet enforce the admin model on its routes (they still use token scopes,
-  and registration does not write the parent tuple). Enforcement and the tuple write arrive
-  with the audit, relationship and model-lifecycle endpoints (RIZ-020 to RIZ-022).
-- Single organization, `organization:default`.
-- Rotating `RIZ_ADMIN_MODEL_ID` is a manual, versioned step: write the new model, then
+- Only organization roles are enforced. An application admin (`admin application:<id>`) gets
+  no admin scopes, because scopes are global and could not keep it to its own application
+  (an application admin who was also an auditor would write everywhere). Enforcing it needs a
+  per-route, per-application check, and registration must then write the parent tuple.
+- Each admin request makes three checks against the admin store, in parallel. Fine for
+  administrative traffic; cache them if that ever changes.
+- `application:<id>` objects are not scoped by organization, and the same ID can exist in two
+  organizations. Application-level roles must name the organization before they are enforced.
+- Rotating `BAE6_ADMIN_MODEL_ID` is a manual, versioned step: write the new model, then
   change the variable.

@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { transformer } from "@openfga/syntax-transformer";
 import pg from "pg";
+import { createAdminAuthorizer } from "./admin/authorizer.js";
+import { withAdminScopes } from "./admin/elevate.js";
 import { explorerRoutes } from "./admin/explorerRoutes.js";
 import { modelRoutes } from "./admin/modelRoutes.js";
 import { createModelService } from "./admin/models.js";
@@ -12,7 +14,9 @@ import { createAdminService } from "./admin/service.js";
 import {
   authenticatorFromEnv,
   endUserVerifierFromEnv,
+  issuersFromEnv,
   oidcAuthFromEnv,
+  type Principal,
 } from "./auth/index.js";
 import { workloadRoutes } from "./auth/workloadRoutes.js";
 import { createBindingStore } from "./auth/workloads.js";
@@ -25,6 +29,7 @@ import { setupObservability } from "./observability.js";
 import { providerRoutes } from "./providers/routes.js";
 import { createProviderService } from "./providers/service.js";
 import { createApp } from "./server.js";
+import { drain } from "./shutdown.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -35,7 +40,7 @@ function required(name: string): string {
 setupObservability(process.env);
 
 const pool = new pg.Pool({
-  connectionString: required("RIZ_DATABASE_URL"),
+  connectionString: required("BAE6_DATABASE_URL"),
   // A saturated pool must fail a request, not hang it.
   connectionTimeoutMillis: 5000,
 });
@@ -44,18 +49,45 @@ pool.on("error", () => console.error(JSON.stringify({ msg: "pool error" })));
 
 const bindings = createBindingStore(pool);
 const { authenticate, verifyEndUser } =
-  process.env.RIZ_AUTH_MODE === "oidc"
+  process.env.BAE6_AUTH_MODE === "oidc"
     ? oidcAuthFromEnv(process.env, bindings.lookup)
     : {
         authenticate: authenticatorFromEnv(process.env),
         verifyEndUser: endUserVerifierFromEnv(process.env),
       };
 
+// Fixture principals carry their scopes; an oidc workload's admin scopes come from the bae6-admin store.
+const withAdmin: (p: Principal) => Promise<Principal> =
+  process.env.BAE6_AUTH_MODE === "oidc"
+    ? withAdminScopes(
+        createAdminAuthorizer({
+          apiUrl: required("OPENFGA_API_URL"),
+          storeId: required("BAE6_ADMIN_STORE_ID"),
+          modelId: required("BAE6_ADMIN_MODEL_ID"),
+        }),
+      )
+    : async (p) => p;
+
 const migrator = await pool.connect();
 try {
   await migrate(migrator);
 } finally {
   migrator.release();
+}
+
+// Migration 003 put pre-tenancy rows in `default`; without an issuer for it they vanish.
+if (
+  process.env.BAE6_AUTH_MODE === "oidc" &&
+  !issuersFromEnv(process.env).some((i) => i.organization === "default")
+) {
+  const legacy = await pool.query(
+    "SELECT 1 FROM applications WHERE organization_id = 'default' LIMIT 1",
+  );
+  if (legacy.rowCount) {
+    throw new Error(
+      "applications from before tenancy belong to organization `default`, which no BAE6_OIDC_ISSUERS entry maps to; map their issuer to `default`",
+    );
+  }
 }
 
 const baseModel = transformer.transformDSLToJSONObject(
@@ -70,14 +102,14 @@ const admin = createAdminService({
   baseModel,
 });
 
-const checkTimeoutMs = Number(process.env.RIZ_CHECK_TIMEOUT_MS ?? 2000);
+const checkTimeoutMs = Number(process.env.BAE6_CHECK_TIMEOUT_MS ?? 2000);
 if (!Number.isInteger(checkTimeoutMs) || checkTimeoutMs < 1) {
-  throw new Error("RIZ_CHECK_TIMEOUT_MS must be a positive integer");
+  throw new Error("BAE6_CHECK_TIMEOUT_MS must be a positive integer");
 }
 // The contract caps a batch at 100; operators may only lower it.
-const maxBatchSize = Number(process.env.RIZ_BATCH_MAX ?? 100);
+const maxBatchSize = Number(process.env.BAE6_BATCH_MAX ?? 100);
 if (!Number.isInteger(maxBatchSize) || maxBatchSize < 1 || maxBatchSize > 100) {
-  throw new Error("RIZ_BATCH_MAX must be an integer from 1 to 100");
+  throw new Error("BAE6_BATCH_MAX must be an integer from 1 to 100");
 }
 const resolver = createResolver(dbLookup(pool), required("OPENFGA_API_URL"));
 const checkService = createCheckService({
@@ -107,27 +139,72 @@ const modelsHandler = modelRoutes(
 );
 const bindingsHandler = workloadRoutes(bindings);
 const providersHandler = providerRoutes(createProviderService({ pool }));
-const readyTimeoutMs = Number(process.env.RIZ_READY_TIMEOUT_MS ?? 1000);
+const readyTimeoutMs = Number(process.env.BAE6_READY_TIMEOUT_MS ?? 1000);
 if (!Number.isInteger(readyTimeoutMs) || readyTimeoutMs < 1) {
-  throw new Error("RIZ_READY_TIMEOUT_MS must be a positive integer");
+  throw new Error("BAE6_READY_TIMEOUT_MS must be a positive integer");
 }
 
+const ADMIN_PATH =
+  /^\/v1\/(me|applications|audit|models|providers|relationships|workload-bindings|explorer)(\/|$)/;
+
 const port = Number(process.env.PORT ?? 8080);
-createApp({
-  authenticate,
-  readiness: readiness({
-    pool,
-    openfgaUrl: required("OPENFGA_API_URL"),
-    timeoutMs: readyTimeoutMs,
-  }),
-  routes: async (req, res, principal, url) =>
-    (await adminHandler(req, res, principal, url)) ||
-    (await relationshipsHandler(req, res, principal, url)) ||
-    (await modelsHandler(req, res, principal, url)) ||
-    (await explorerHandler(req, res, principal, url)) ||
-    (await bindingsHandler(req, res, principal, url)) ||
-    (await providersHandler(req, res, principal, url)) ||
-    checks(req, res, principal, url),
-}).listen(port, "0.0.0.0", () => {
-  console.log(JSON.stringify({ msg: "riz api listening", port }));
+const dependenciesDown = readiness({
+  pool,
+  openfgaUrl: required("OPENFGA_API_URL"),
+  timeoutMs: readyTimeoutMs,
 });
+let draining = false;
+const server = createApp({
+  authenticate,
+  readiness: async () => (draining ? ["shutting_down"] : dependenciesDown()),
+  routes: async (req, res, principal, url) => {
+    // Checks first and with the caller as authenticated: the check path never waits on the admin store.
+    if (await checks(req, res, principal, url)) return true;
+    // Unknown paths fall through to a 404 without asking the admin store.
+    if (!ADMIN_PATH.test(url.pathname)) return false;
+    const admin = await withAdmin(principal);
+    return (
+      (await adminHandler(req, res, admin, url)) ||
+      (await relationshipsHandler(req, res, admin, url)) ||
+      (await modelsHandler(req, res, admin, url)) ||
+      (await explorerHandler(req, res, admin, url)) ||
+      (await bindingsHandler(req, res, admin, url)) ||
+      (await providersHandler(req, res, admin, url))
+    );
+  },
+});
+server.listen(port, "0.0.0.0", () => {
+  console.log(JSON.stringify({ msg: "authz api listening", port }));
+});
+
+// Kubernetes sends SIGTERM, then SIGKILL after 30s by default; finish before that.
+// Budget: the delay, then draining, then closing the pool (POOL_CLOSE_MS).
+const SHUTDOWN_TOTAL_MS = 25_000;
+const POOL_CLOSE_MS = 2000;
+// While unready but still listening, the load balancer sees /health/ready fail and stops
+// routing here. Set it to about the readiness period times its failure threshold.
+const shutdownDelayMs = Number(process.env.BAE6_SHUTDOWN_DELAY_MS ?? 0);
+if (
+  !Number.isInteger(shutdownDelayMs) ||
+  shutdownDelayMs < 0 ||
+  shutdownDelayMs > SHUTDOWN_TOTAL_MS - POOL_CLOSE_MS - 1000
+) {
+  throw new Error("BAE6_SHUTDOWN_DELAY_MS must be an integer from 0 to 22000");
+}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, async () => {
+    console.log(JSON.stringify({ msg: "authz api draining", signal }));
+    draining = true;
+    try {
+      await sleep(shutdownDelayMs);
+      await drain(server, SHUTDOWN_TOTAL_MS - POOL_CLOSE_MS - shutdownDelayMs);
+      // Cut handlers may still hold a client, and pool.end() waits for them.
+      await Promise.race([pool.end(), sleep(POOL_CLOSE_MS)]);
+      process.exit(0);
+    } catch {
+      console.error(JSON.stringify({ msg: "shutdown failed" }));
+      process.exit(1);
+    }
+  });
+}

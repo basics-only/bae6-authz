@@ -1,5 +1,5 @@
 {
-  "name": "check raises an api error when riz is unavailable",
+  "name": "check raises an api error when authz is unavailable",
   "call": {
     "operation": "check",
     "endUserToken": "alice-token",
@@ -20,7 +20,7 @@
   },
   "expect": {
     "error": {
-      "type": "RizApiError",
+      "type": "AuthzApiError",
       "status": 503,
       "code": "unavailable",
       "requestId": "req_10"
