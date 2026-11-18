@@ -1,5 +1,5 @@
 {
-  "name": "check resolves not allowed when riz answers deny",
+  "name": "check resolves not allowed when authz answers deny",
   "call": {
     "operation": "check",
     "endUserToken": "alice-token",

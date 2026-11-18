@@ -29,7 +29,7 @@ tests:
 `;
 
 function modelDir(model: string, testsYaml: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "riz-model-"));
+  const dir = mkdtempSync(join(tmpdir(), "authz-model-"));
   // The CLI container runs as another user; on Linux a 0700 mkdtemp dir is unreadable to it.
   chmodSync(dir, 0o755);
   writeFileSync(join(dir, "model.fga"), model);
@@ -63,9 +63,9 @@ test("accepts the repository base model", () => {
   validateModel(resolve(import.meta.dirname, "../../models/openfga/base.fga"));
 });
 
-test("accepts the riz admin model, whose assertions sit in a named file", () => {
+test("accepts the authz admin model, whose assertions sit in a named file", () => {
   validateModel(
-    resolve(import.meta.dirname, "../../models/openfga/riz-admin.fga"),
+    resolve(import.meta.dirname, "../../models/openfga/bae6-admin.fga"),
   );
 });
 

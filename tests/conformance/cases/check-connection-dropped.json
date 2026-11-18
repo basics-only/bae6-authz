@@ -12,6 +12,6 @@
   },
   "response": { "drop": true },
   "expect": {
-    "error": { "type": "RizTransportError" }
+    "error": { "type": "AuthzTransportError" }
   }
 }

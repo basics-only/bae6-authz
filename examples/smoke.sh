@@ -3,8 +3,8 @@
 # outcomes a caller can see. Run from the repo root: examples/smoke.sh
 set -eu
 
-export RIZ_API_URL="${RIZ_API_URL:-http://localhost:8080}"
-export RIZ_WORKLOAD_TOKEN=dev-check-token
+export BAE6_API_URL="${BAE6_API_URL:-http://localhost:8080}"
+export BAE6_WORKLOAD_TOKEN=dev-check-token
 for port in 8101 8102; do
   if curl -s -o /dev/null "http://localhost:$port/"; then
     echo "port $port is already in use; stop whatever is listening and rerun" >&2
@@ -12,8 +12,8 @@ for port in 8101 8102; do
   fi
 done
 
-RIZ_APPLICATION=$(examples/seed.sh)
-export RIZ_APPLICATION
+BAE6_APPLICATION=$(examples/seed.sh)
+export BAE6_APPLICATION
 
 pids=""
 trap 'kill $pids 2>/dev/null || true' EXIT
@@ -39,7 +39,7 @@ uv run --frozen --project examples/fastapi uvicorn main:app --app-dir examples/f
 pids="$!"
 smoke fastapi 8101
 
-pnpm --filter @riz/sdk build
-PORT=8102 pnpm --filter @riz/example-express start &
+pnpm --filter @bae6/authz build
+PORT=8102 pnpm --filter @bae6/authz-example-express start &
 pids="$pids $!"
 smoke express 8102

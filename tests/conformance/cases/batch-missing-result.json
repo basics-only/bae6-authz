@@ -1,5 +1,5 @@
 {
-  "name": "batch check treats an item riz did not answer as indeterminate",
+  "name": "batch check treats an item authz did not answer as indeterminate",
   "call": {
     "operation": "batchCheck",
     "endUserToken": "alice-token",

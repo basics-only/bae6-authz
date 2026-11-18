@@ -24,7 +24,7 @@ const workload = (name: string): Principal => ({
 async function elevator() {
   const url = apiUrl as string;
   const { id: storeId } = await new OpenFgaClient({ apiUrl: url }).createStore({
-    name: "riz-admin-elevate-test",
+    name: "bae6-admin-elevate-test",
   });
   const { authorization_model_id: modelId } = await new OpenFgaClient({
     apiUrl: url,
@@ -32,7 +32,7 @@ async function elevator() {
   }).writeAuthorizationModel(
     transformer.transformDSLToJSONObject(
       readFileSync(
-        join(import.meta.dirname, "../../../../models/openfga/riz-admin.fga"),
+        join(import.meta.dirname, "../../../../models/openfga/bae6-admin.fga"),
         "utf8",
       ),
     ),

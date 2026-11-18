@@ -4,9 +4,9 @@ import { test } from "node:test";
 import pg from "pg";
 import { migrate } from "./migrate.js";
 
-// Integration: needs Postgres (RIZ_DATABASE_URL). Unverified until run against one.
-const url = process.env.RIZ_DATABASE_URL;
-const opts = { skip: url ? false : "RIZ_DATABASE_URL not set" };
+// Integration: needs Postgres (BAE6_DATABASE_URL). Unverified until run against one.
+const url = process.env.BAE6_DATABASE_URL;
+const opts = { skip: url ? false : "BAE6_DATABASE_URL not set" };
 
 // Each test runs in its own schema so it starts from an empty database.
 async function withSchema(fn: (client: pg.Client) => Promise<void>) {

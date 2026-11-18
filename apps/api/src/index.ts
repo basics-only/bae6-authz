@@ -39,7 +39,7 @@ function required(name: string): string {
 setupObservability(process.env);
 
 const pool = new pg.Pool({
-  connectionString: required("RIZ_DATABASE_URL"),
+  connectionString: required("BAE6_DATABASE_URL"),
   // A saturated pool must fail a request, not hang it.
   connectionTimeoutMillis: 5000,
 });
@@ -48,21 +48,21 @@ pool.on("error", () => console.error(JSON.stringify({ msg: "pool error" })));
 
 const bindings = createBindingStore(pool);
 const { authenticate, verifyEndUser } =
-  process.env.RIZ_AUTH_MODE === "oidc"
+  process.env.BAE6_AUTH_MODE === "oidc"
     ? oidcAuthFromEnv(process.env, bindings.lookup)
     : {
         authenticate: authenticatorFromEnv(process.env),
         verifyEndUser: endUserVerifierFromEnv(process.env),
       };
 
-// Fixture principals carry their scopes; an oidc workload's admin scopes come from the riz-admin store.
+// Fixture principals carry their scopes; an oidc workload's admin scopes come from the bae6-admin store.
 const withAdmin: (p: Principal) => Promise<Principal> =
-  process.env.RIZ_AUTH_MODE === "oidc"
+  process.env.BAE6_AUTH_MODE === "oidc"
     ? withAdminScopes(
         createAdminAuthorizer({
           apiUrl: required("OPENFGA_API_URL"),
-          storeId: required("RIZ_ADMIN_STORE_ID"),
-          modelId: required("RIZ_ADMIN_MODEL_ID"),
+          storeId: required("BAE6_ADMIN_STORE_ID"),
+          modelId: required("BAE6_ADMIN_MODEL_ID"),
         }),
       )
     : async (p) => p;
@@ -86,14 +86,14 @@ const admin = createAdminService({
   baseModel,
 });
 
-const checkTimeoutMs = Number(process.env.RIZ_CHECK_TIMEOUT_MS ?? 2000);
+const checkTimeoutMs = Number(process.env.BAE6_CHECK_TIMEOUT_MS ?? 2000);
 if (!Number.isInteger(checkTimeoutMs) || checkTimeoutMs < 1) {
-  throw new Error("RIZ_CHECK_TIMEOUT_MS must be a positive integer");
+  throw new Error("BAE6_CHECK_TIMEOUT_MS must be a positive integer");
 }
 // The contract caps a batch at 100; operators may only lower it.
-const maxBatchSize = Number(process.env.RIZ_BATCH_MAX ?? 100);
+const maxBatchSize = Number(process.env.BAE6_BATCH_MAX ?? 100);
 if (!Number.isInteger(maxBatchSize) || maxBatchSize < 1 || maxBatchSize > 100) {
-  throw new Error("RIZ_BATCH_MAX must be an integer from 1 to 100");
+  throw new Error("BAE6_BATCH_MAX must be an integer from 1 to 100");
 }
 const resolver = createResolver(dbLookup(pool), required("OPENFGA_API_URL"));
 const checkService = createCheckService({
@@ -123,9 +123,9 @@ const modelsHandler = modelRoutes(
 );
 const bindingsHandler = workloadRoutes(bindings);
 const providersHandler = providerRoutes(createProviderService({ pool }));
-const readyTimeoutMs = Number(process.env.RIZ_READY_TIMEOUT_MS ?? 1000);
+const readyTimeoutMs = Number(process.env.BAE6_READY_TIMEOUT_MS ?? 1000);
 if (!Number.isInteger(readyTimeoutMs) || readyTimeoutMs < 1) {
-  throw new Error("RIZ_READY_TIMEOUT_MS must be a positive integer");
+  throw new Error("BAE6_READY_TIMEOUT_MS must be a positive integer");
 }
 
 const ADMIN_PATH =
@@ -158,7 +158,7 @@ const server = createApp({
   },
 });
 server.listen(port, "0.0.0.0", () => {
-  console.log(JSON.stringify({ msg: "riz api listening", port }));
+  console.log(JSON.stringify({ msg: "authz api listening", port }));
 });
 
 // Kubernetes sends SIGTERM, then SIGKILL after 30s by default; finish before that.
@@ -167,18 +167,18 @@ const SHUTDOWN_TOTAL_MS = 25_000;
 const POOL_CLOSE_MS = 2000;
 // While unready but still listening, the load balancer sees /health/ready fail and stops
 // routing here. Set it to about the readiness period times its failure threshold.
-const shutdownDelayMs = Number(process.env.RIZ_SHUTDOWN_DELAY_MS ?? 0);
+const shutdownDelayMs = Number(process.env.BAE6_SHUTDOWN_DELAY_MS ?? 0);
 if (
   !Number.isInteger(shutdownDelayMs) ||
   shutdownDelayMs < 0 ||
   shutdownDelayMs > SHUTDOWN_TOTAL_MS - POOL_CLOSE_MS - 1000
 ) {
-  throw new Error("RIZ_SHUTDOWN_DELAY_MS must be an integer from 0 to 22000");
+  throw new Error("BAE6_SHUTDOWN_DELAY_MS must be an integer from 0 to 22000");
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, async () => {
-    console.log(JSON.stringify({ msg: "riz api draining", signal }));
+    console.log(JSON.stringify({ msg: "authz api draining", signal }));
     draining = true;
     try {
       await sleep(shutdownDelayMs);

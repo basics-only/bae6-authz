@@ -184,8 +184,8 @@ test("a malformed binding is rejected before it reaches the store", () =>
   }));
 
 // Store, against Postgres. Unverified until run against it.
-const url = process.env.RIZ_DATABASE_URL;
-const opts = { skip: url ? false : "RIZ_DATABASE_URL not set" };
+const url = process.env.BAE6_DATABASE_URL;
+const opts = { skip: url ? false : "BAE6_DATABASE_URL not set" };
 
 async function withStore(
   fn: (store: BindingStore, pool: pg.Pool) => Promise<void>,

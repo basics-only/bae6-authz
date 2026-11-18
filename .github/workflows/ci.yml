@@ -20,7 +20,7 @@ jobs:
           --health-timeout 3s
           --health-retries 30
     env:
-      RIZ_DATABASE_URL: postgres://postgres:ci@localhost:5432/postgres
+      BAE6_DATABASE_URL: postgres://postgres:ci@localhost:5432/postgres
       OPENFGA_API_URL: http://localhost:8081
     steps:
       - uses: actions/checkout@v5
@@ -36,7 +36,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm --filter @riz/security test:security
+      - run: pnpm --filter @bae6/authz-security test:security
         timeout-minutes: 10
       - run: pnpm build
 
@@ -54,13 +54,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @riz/api test:integration
+      - run: pnpm --filter @bae6/authz-api test:integration
         env:
-          RIZ_API_URL: http://localhost:8080
+          BAE6_API_URL: http://localhost:8080
           OPENFGA_API_URL: http://localhost:8081
-      - run: pnpm --filter @riz/sdk test:integration
+      - run: pnpm --filter @bae6/authz test:integration
         env:
-          RIZ_API_URL: http://localhost:8080
+          BAE6_API_URL: http://localhost:8080
           OPENFGA_API_URL: http://localhost:8081
       - if: failure()
         run: docker compose --env-file .env -f deploy/compose.yaml logs --tail 50 api openfga
@@ -96,10 +96,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @riz/api test:replicas
+      - run: pnpm --filter @bae6/authz-api test:replicas
         env:
-          RIZ_LB_URL: http://localhost:8090
-          RIZ_REPLICAS: "2"
+          BAE6_LB_URL: http://localhost:8090
+          BAE6_REPLICAS: "2"
       - if: failure()
         run: docker compose --env-file .env -f deploy/compose.yaml --profile replicas logs --tail 50 api-replica lb
 

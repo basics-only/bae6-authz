@@ -1,13 +1,13 @@
-# 0004 — Authorizing riz's own administration
+# 0004 — Authorizing bae6-authz's own administration
 
 ## Decision
 
 Administrative actions (register an application, manage workload bindings, read audit,
-manage relationships and models) are authorized by OpenFGA in a dedicated **`riz-admin`
+manage relationships and models) are authorized by OpenFGA in a dedicated **`bae6-admin`
 store**, separate from every application store. Check permission (`check` scope, an
 application's own store) never implies any admin permission.
 
-The model is `models/openfga/riz-admin.fga`; its assertions are `riz-admin.tests.yaml`
+The model is `models/openfga/bae6-admin.fga`; its assertions are `bae6-admin.tests.yaml`
 (`make model-test`). Roles:
 
 | Role | Granted by tuple | Can |
@@ -17,10 +17,10 @@ The model is `models/openfga/riz-admin.fga`; its assertions are `riz-admin.tests
 | application admin | `user:<sub> admin application:<id>` | read, manage relationships and model of that application only |
 
 The API evaluates these through `createAdminAuthorizer` (`apps/api/src/admin/authorizer.ts`)
-at a **pinned model ID** (`RIZ_ADMIN_MODEL_ID`, never "latest"). An OpenFGA outage is a
+at a **pinned model ID** (`BAE6_ADMIN_MODEL_ID`, never "latest"). An OpenFGA outage is a
 503 `authorization_unavailable`; a subject that is not a plain identifier is denied.
 
-## How it reaches the routes (`RIZ_AUTH_MODE=oidc`)
+## How it reaches the routes (`BAE6_AUTH_MODE=oidc`)
 
 The routes keep checking scopes and the application allow-list. In oidc mode, for every
 request that is not a check, `withAdminScopes` (`apps/api/src/admin/elevate.ts`) adds the
@@ -34,15 +34,15 @@ applications:
 | none, or application admin only | none: the workload keeps `check` on its bound applications and nothing else |
 
 **Only an admin token is elevated.** A client ID alone cannot tell a service account from a
-person signing in through the same client, so the issuer entry in `RIZ_OIDC_ISSUERS` takes
+person signing in through the same client, so the issuer entry in `BAE6_OIDC_ISSUERS` takes
 an `adminAudience`, distinct from `audience`. A token is elevated only if it carries that
 audience, and with no `adminAudience` configured nothing is ever elevated. Configure the IdP
-to put it in tokens for the service accounts that administer riz, and never in user logins.
+to put it in tokens for the service accounts that administer bae6-authz, and never in user logins.
 A token with the admin audience but no role in the store gets nothing.
 
 Check requests are decided first and with the principal as authenticated, so the check
 path never waits on the admin store and an admin's reach never carries over to it. The API
-refuses to start in oidc mode without `RIZ_ADMIN_STORE_ID` and `RIZ_ADMIN_MODEL_ID`.
+refuses to start in oidc mode without `BAE6_ADMIN_STORE_ID` and `BAE6_ADMIN_MODEL_ID`.
 
 A workload's name in the admin store is the SHA-256 (hex) of the JSON array
 `[issuer, workload]`. The raw pair holds `:` and `/`, which an OpenFGA user ID cannot, and
@@ -57,20 +57,20 @@ No credentials are baked in; the operator names the first admin workload.
 
 ```sh
 OPENFGA_API_URL=http://localhost:8081 \
-  pnpm --filter @riz/scripts exec tsx src/cli.ts bootstrap-admin \
+  pnpm --filter @bae6/authz-scripts exec tsx src/cli.ts bootstrap-admin \
   --issuer <issuer> --workload <client id>
 ```
 
 `--admin <subject>` names a subject directly instead (a plain identifier, such as an
-already-computed hash). The command creates the `riz-admin` store, writes and validates the model, writes the
+already-computed hash). The command creates the `bae6-admin` store, writes and validates the model, writes the
 `security_admin` tuple for that workload, and prints:
 
 ```
-RIZ_ADMIN_STORE_ID=...
-RIZ_ADMIN_MODEL_ID=...
+BAE6_ADMIN_STORE_ID=...
+BAE6_ADMIN_MODEL_ID=...
 ```
 
-Set both in the API's environment. It refuses to run when a `riz-admin` store already
+Set both in the API's environment. It refuses to run when a `bae6-admin` store already
 exists. To grant further roles afterwards, write tuples to that store (table above) with
 the OpenFGA CLI or API.
 
@@ -86,5 +86,5 @@ in the admin store for org-level roles to reach it.
 - Each admin request makes three checks against the admin store, in parallel. Fine for
   administrative traffic; cache them if that ever changes.
 - Single organization, `organization:default`.
-- Rotating `RIZ_ADMIN_MODEL_ID` is a manual, versioned step: write the new model, then
+- Rotating `BAE6_ADMIN_MODEL_ID` is a manual, versioned step: write the new model, then
   change the variable.

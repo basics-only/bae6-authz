@@ -1,5 +1,5 @@
 {
-  "name": "batch check returns decisions in input order whatever order riz answers in",
+  "name": "batch check returns decisions in input order whatever order authz answers in",
   "call": {
     "operation": "batchCheck",
     "endUserToken": "alice-token",

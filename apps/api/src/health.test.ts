@@ -10,7 +10,7 @@ const REFUSED = "http://127.0.0.1:1";
 const deadPool = () =>
   new pg.Pool({ connectionString: "postgres://x:x@127.0.0.1:1/x" });
 
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 
 test("reports both dependencies down when neither is reachable", async () => {
@@ -49,7 +49,7 @@ test("reports OpenFGA down within the timeout when it hangs", async () => {
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 test(

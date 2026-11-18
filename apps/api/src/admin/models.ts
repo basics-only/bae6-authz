@@ -21,7 +21,7 @@ export interface Assertion extends Relationship {
 export class InvalidModel extends Error {}
 /** The model parsed, but its assertions do not hold; the binding is not changed. */
 export class AssertionsFailed extends Error {}
-/** The model drops, repeats or changes a core type, which only riz may define. */
+/** The model drops, repeats or changes a core type, which only authz may define. */
 export class CoreViolated extends Error {}
 export class ModelNotFound extends Error {}
 export class ModelAlreadyActive extends Error {}
@@ -45,7 +45,7 @@ export function createModelService(deps: {
   lookup: Lookup;
   apiUrl: string;
   /**
-   * The riz core model (DSL). When set, every submitted model must contain each core
+   * The authz core model (DSL). When set, every submitted model must contain each core
    * type exactly once and unchanged, and an application may submit just an extension.
    */
   core?: string;
@@ -135,7 +135,7 @@ export function createModelService(deps: {
     const { id: storeId } = await fga(
       () =>
         new OpenFgaClient({ apiUrl }).createStore({
-          name: `riz-validate-${randomUUID()}`,
+          name: `authz-validate-${randomUUID()}`,
         }),
       invalid,
     );
@@ -179,7 +179,7 @@ export function createModelService(deps: {
         throw new AssertionsFailed(`Assertions failed: #${failed.join(", #")}`);
       }
     } finally {
-      // shortcut: a failed delete leaves an inert riz-validate-* store; add a janitor
+      // shortcut: a failed delete leaves an inert authz-validate-* store; add a janitor
       // when scratch stores start to accumulate.
       await new OpenFgaClient({ apiUrl, storeId })
         .deleteStore()

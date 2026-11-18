@@ -8,7 +8,7 @@ import { OpenFgaClient } from "@openfga/sdk";
 import { transformer } from "@openfga/syntax-transformer";
 
 // Black-box harness for the security suite: it starts the real API process (apps/api/src/index.ts)
-// against the Postgres and OpenFGA in RIZ_DATABASE_URL and OPENFGA_API_URL, so what is tested is
+// against the Postgres and OpenFGA in BAE6_DATABASE_URL and OPENFGA_API_URL, so what is tested is
 // the production wiring, not a hand-built app. Fixture tokens are fixed test literals that live
 // only in mode-0600 temp files; they are never the dev values in deploy/fixtures.
 
@@ -116,7 +116,7 @@ export async function startApi(
   const stop = stopper(child);
   const url = `http://127.0.0.1:${port}`;
   const deadline = Date.now() + 60_000;
-  while (!output.join("").includes("riz api listening")) {
+  while (!output.join("").includes("authz api listening")) {
     if (child.exitCode !== null) {
       throw new Error(`API exited early: ${output.join("").slice(-500)}`);
     }
@@ -140,7 +140,11 @@ export async function startApiExpectingExit(
   );
   clearTimeout(timer);
   const text = output.join("");
-  return { code, listening: text.includes("riz api listening"), output: text };
+  return {
+    code,
+    listening: text.includes("authz api listening"),
+    output: text,
+  };
 }
 
 /** Points a dependency URL at a local fault proxy. */
@@ -166,7 +170,7 @@ export function fixtureFiles(
   tokens: Record<string, FixturePrincipal>,
   endUsers: Record<string, string>,
 ) {
-  const dir = mkdtempSync(join(tmpdir(), "riz-security-"));
+  const dir = mkdtempSync(join(tmpdir(), "authz-security-"));
   const auth = join(dir, "auth.json");
   const users = join(dir, "end-users.json");
   writeFileSync(auth, JSON.stringify(tokens), { mode: 0o600 });
@@ -174,9 +178,9 @@ export function fixtureFiles(
   return {
     env: {
       NODE_ENV: "development",
-      RIZ_AUTH_MODE: "fixture",
-      RIZ_FIXTURE_AUTH_FILE: auth,
-      RIZ_FIXTURE_END_USERS_FILE: users,
+      BAE6_AUTH_MODE: "fixture",
+      BAE6_FIXTURE_AUTH_FILE: auth,
+      BAE6_FIXTURE_END_USERS_FILE: users,
     },
     dispose: () => rmSync(dir, { recursive: true, force: true }),
   };
@@ -202,7 +206,7 @@ export function client(base: string) {
       method,
       headers: {
         ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}),
-        ...(opts.user ? { "riz-end-user-token": opts.user } : {}),
+        ...(opts.user ? { "bae6-end-user-token": opts.user } : {}),
         "content-type": "application/json",
         ...opts.headers,
       },
@@ -233,7 +237,7 @@ export const readDoc = (application: string, extra: object = {}) => ({
 });
 
 /**
- * A riz-admin store at the repo's admin model holding `grants`, as the env the API needs in oidc mode.
+ * A bae6-admin store at the repo's admin model holding `grants`, as the env the API needs in oidc mode.
  * A workload is named by the SHA-256 of `<issuer>|<workload>`, computed here independently of the API.
  */
 export async function adminStore(
@@ -241,7 +245,7 @@ export async function adminStore(
 ) {
   const apiUrl = required("OPENFGA_API_URL");
   const { id: storeId } = await new OpenFgaClient({ apiUrl }).createStore({
-    name: "riz-admin-security-test",
+    name: "bae6-admin-security-test",
   });
   const { authorization_model_id: modelId } = await new OpenFgaClient({
     apiUrl,
@@ -249,7 +253,7 @@ export async function adminStore(
   }).writeAuthorizationModel(
     transformer.transformDSLToJSONObject(
       readFileSync(
-        join(import.meta.dirname, "../../models/openfga/riz-admin.fga"),
+        join(import.meta.dirname, "../../models/openfga/bae6-admin.fga"),
         "utf8",
       ),
     ),
@@ -270,5 +274,5 @@ export async function adminStore(
       })),
     });
   }
-  return { RIZ_ADMIN_STORE_ID: storeId, RIZ_ADMIN_MODEL_ID: modelId };
+  return { BAE6_ADMIN_STORE_ID: storeId, BAE6_ADMIN_MODEL_ID: modelId };
 }

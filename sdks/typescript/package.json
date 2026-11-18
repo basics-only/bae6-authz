@@ -1,5 +1,5 @@
 {
-  "name": "@riz/sdk",
+  "name": "@bae6/authz",
   "version": "0.0.0",
   "type": "module",
   "main": "dist/index.js",

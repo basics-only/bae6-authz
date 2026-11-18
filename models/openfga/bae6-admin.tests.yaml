@@ -1,5 +1,5 @@
-name: riz-admin
-model_file: ./riz-admin.fga
+name: bae6-admin
+model_file: ./bae6-admin.fga
 
 tuples:
   - { user: user:olga, relation: security_admin, object: organization:default }

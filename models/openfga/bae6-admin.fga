@@ -3,7 +3,7 @@ model
 
 type user
 
-# One organization, `organization:default`. Roles are tuples in riz's own store,
+# One organization, `organization:default`. Roles are tuples in authz's own store,
 # never in an application's store. Mutation permissions (can_manage_*,
 # can_register_*) are separate relations from read permissions, and the
 # auditor role grants reads only.

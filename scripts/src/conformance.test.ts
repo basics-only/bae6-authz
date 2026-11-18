@@ -11,7 +11,7 @@ const spec = join(root, "contracts/openapi.yaml");
 const allow = { status: "allow", requestId: "req_1" };
 
 function casesDir(c: object): string {
-  const dir = mkdtempSync(join(tmpdir(), "riz-cases-"));
+  const dir = mkdtempSync(join(tmpdir(), "authz-cases-"));
   writeFileSync(join(dir, "case.json"), JSON.stringify(c));
   return dir;
 }

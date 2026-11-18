@@ -18,10 +18,10 @@ import { checkRoutes } from "./routes.js";
 import { createCheckService } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 const principals: Record<string, Principal> = {
@@ -46,6 +46,7 @@ type Call = (
   body: unknown,
   endUserToken?: string,
   path?: string,
+  endUserHeader?: string,
 ) => Promise<Res>;
 
 function listen(server: Server) {
@@ -104,13 +105,19 @@ async function withApp(
     });
     servers.push(server);
     const port = await listen(server);
-    return async (token, body, endUserToken, path = "/v1/check") => {
+    return async (
+      token,
+      body,
+      endUserToken,
+      path = "/v1/check",
+      endUserHeader = "bae6-end-user-token",
+    ) => {
       const res = await fetch(`http://127.0.0.1:${port}${path}`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
-          ...(endUserToken ? { "riz-end-user-token": endUserToken } : {}),
+          ...(endUserToken ? { [endUserHeader]: endUserToken } : {}),
         },
         body: JSON.stringify(body),
       });
@@ -196,6 +203,20 @@ test(
       assert.equal(deny.status, 200);
       assert.equal(deny.body.status, "deny");
     }),
+);
+
+test("still accepts the end-user token in the legacy riz header", opts, () =>
+  withApp(async ({ admin }) => {
+    const res = await admin(
+      "admin",
+      read,
+      "alice-token",
+      "/v1/check",
+      "riz-end-user-token",
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.body.status, "allow");
+  }),
 );
 
 test("rejects a request that tries to name the user in the body", opts, () =>

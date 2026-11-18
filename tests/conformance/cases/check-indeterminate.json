@@ -1,5 +1,5 @@
 {
-  "name": "check raises instead of resolving when riz answers indeterminate",
+  "name": "check raises instead of resolving when authz answers indeterminate",
   "call": {
     "operation": "check",
     "endUserToken": "alice-token",
@@ -25,7 +25,7 @@
   },
   "expect": {
     "error": {
-      "type": "RizIndeterminateError",
+      "type": "AuthzIndeterminateError",
       "code": "timeout",
       "requestId": "req_3"
     }

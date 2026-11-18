@@ -140,7 +140,7 @@ export function relationshipRoutes(service: RelationshipService) {
           relationships,
           requestIdOf(res),
         );
-        res.setHeader("riz-audit-event-id", auditEventId);
+        res.setHeader("bae6-audit-event-id", auditEventId);
         res.statusCode = 204;
         res.end();
       } else if (req.method === "DELETE") {
@@ -158,7 +158,7 @@ export function relationshipRoutes(service: RelationshipService) {
           relationship,
           requestIdOf(res),
         );
-        res.setHeader("riz-audit-event-id", auditEventId);
+        res.setHeader("bae6-audit-event-id", auditEventId);
         res.statusCode = 204;
         res.end();
       } else {

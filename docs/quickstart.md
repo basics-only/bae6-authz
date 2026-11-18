@@ -5,7 +5,7 @@ tokens (`deploy/fixtures`); never expose this stack.
 
 Requires Docker, with ports 3000, 5432, 8080 and 8081 free.
 
-## 1. Start riz
+## 1. Start bae6-authz
 
 ```sh
 cp .env.example .env     # the placeholder passwords are fine locally
@@ -20,8 +20,8 @@ Expect `{"status":"ok"}`.
 Every application gets its own isolated OpenFGA store and the base authorization model.
 
 ```sh
-export RIZ=http://localhost:8080
-APP=$(curl -sf -X POST $RIZ/v1/applications \
+export AUTHZ=http://localhost:8080
+APP=$(curl -sf -X POST $AUTHZ/v1/applications \
   -H 'authorization: Bearer dev-admin-token' -H 'content-type: application/json' \
   -d '{"name":"quickstart","environment":"prod"}' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 echo $APP
@@ -36,7 +36,7 @@ The base model lets a viewer of a project read the project's documents. Make `al
 viewer of `project:p1`, and put `document:d1` in that project:
 
 ```sh
-curl -sf -X POST $RIZ/v1/relationships \
+curl -sf -X POST $AUTHZ/v1/relationships \
   -H 'authorization: Bearer dev-admin-token' -H 'content-type: application/json' \
   -d "{\"application\":\"$APP\",\"relationships\":[
     {\"subject\":\"user:alice\",\"relation\":\"viewer\",\"object\":\"project:p1\"},
@@ -51,9 +51,9 @@ The workload (`dev-check-token`) asks on behalf of the end user (`dev-alice-toke
 the fixture identity provider maps to alice):
 
 ```sh
-curl -s -X POST $RIZ/v1/check \
+curl -s -X POST $AUTHZ/v1/check \
   -H 'authorization: Bearer dev-check-token' \
-  -H 'riz-end-user-token: dev-alice-token' -H 'content-type: application/json' \
+  -H 'bae6-end-user-token: dev-alice-token' -H 'content-type: application/json' \
   -d "{\"application\":\"$APP\",\"relation\":\"read\",\"object\":\"document:d1\"}"
 ```
 

@@ -1,5 +1,5 @@
 {
-  "name": "check raises a timeout error when riz does not answer in time",
+  "name": "check raises a timeout error when authz does not answer in time",
   "client": { "timeoutMs": 100 },
   "call": {
     "operation": "check",
@@ -17,6 +17,6 @@
     "body": { "status": "allow", "requestId": "req_11", "modelId": "model_1" }
   },
   "expect": {
-    "error": { "type": "RizTimeoutError" }
+    "error": { "type": "AuthzTimeoutError" }
   }
 }

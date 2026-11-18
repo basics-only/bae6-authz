@@ -24,7 +24,7 @@ jobs:
       # A tag on any other branch would publish and sign an unreviewed image.
       - run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       # ghcr.io names must be lowercase.
-      - run: echo "REPO=ghcr.io/${OWNER,,}/riz-${{ matrix.image }}" >> "$GITHUB_ENV"
+      - run: echo "REPO=ghcr.io/${OWNER,,}/bae6-authz-${{ matrix.image }}" >> "$GITHUB_ENV"
         env:
           OWNER: ${{ github.repository_owner }}
       # Fixed timestamps: the same commit builds the same layers.

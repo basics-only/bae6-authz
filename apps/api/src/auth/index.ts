@@ -9,26 +9,26 @@ import {
 
 export type { Authenticator, EndUserVerifier, Principal } from "./principal.js";
 
-/** Fails closed: with no recognized RIZ_AUTH_MODE the process cannot start. */
+/** Fails closed: with no recognized BAE6_AUTH_MODE the process cannot start. */
 export function authenticatorFromEnv(env: NodeJS.ProcessEnv): Authenticator {
-  if (env.RIZ_AUTH_MODE === "fixture") {
+  if (env.BAE6_AUTH_MODE === "fixture") {
     return fixtureAuthenticator(env);
   }
-  throw new Error("RIZ_AUTH_MODE must be set (supported: fixture, oidc)");
+  throw new Error("BAE6_AUTH_MODE must be set (supported: fixture, oidc)");
 }
 
 export function endUserVerifierFromEnv(
   env: NodeJS.ProcessEnv,
 ): EndUserVerifier {
-  if (env.RIZ_AUTH_MODE === "fixture") {
+  if (env.BAE6_AUTH_MODE === "fixture") {
     return fixtureEndUserVerifier(env);
   }
-  throw new Error("RIZ_AUTH_MODE must be set (supported: fixture, oidc)");
+  throw new Error("BAE6_AUTH_MODE must be set (supported: fixture, oidc)");
 }
 
 function issuersFromEnv(env: NodeJS.ProcessEnv): OidcIssuer[] {
   try {
-    const parsed: unknown = JSON.parse(env.RIZ_OIDC_ISSUERS ?? "");
+    const parsed: unknown = JSON.parse(env.BAE6_OIDC_ISSUERS ?? "");
     if (!Array.isArray(parsed)) throw new Error();
     return parsed.map((i: Record<string, unknown>) => {
       if (
@@ -50,7 +50,7 @@ function issuersFromEnv(env: NodeJS.ProcessEnv): OidcIssuer[] {
     });
   } catch {
     throw new Error(
-      'RIZ_OIDC_ISSUERS must be a JSON array of {"issuer","audience","jwksUri"}',
+      'BAE6_OIDC_ISSUERS must be a JSON array of {"issuer","audience","jwksUri"}',
     );
   }
 }

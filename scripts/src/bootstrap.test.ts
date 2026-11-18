@@ -22,7 +22,7 @@ test("refuses an admin subject that could name another OpenFGA user", async () =
   }
 });
 
-// Integration: needs a running OpenFGA with no riz-admin store. Unverified until run against one.
+// Integration: needs a running OpenFGA with no bae6-admin store. Unverified until run against one.
 test(
   "bootstraps once and refuses a second run, even past the first page of stores",
   { skip: process.env.OPENFGA_API_URL ? false : "OPENFGA_API_URL not set" },
@@ -30,7 +30,7 @@ test(
     const apiUrl = process.env.OPENFGA_API_URL as string;
     const model = resolve(
       import.meta.dirname,
-      "../../models/openfga/riz-admin.fga",
+      "../../models/openfga/bae6-admin.fga",
     );
     const client = new OpenFgaClient({ apiUrl });
     // Push the admin store beyond the first page so a one-page lookup would miss it.

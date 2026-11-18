@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
-  title: riz API
+  title: bae6-authz API
   version: 1.0.0
   summary: Organization-wide authorization control plane.
   description: |
-    Single source of truth for the riz HTTP API. SDKs and the API implementation
+    Single source of truth for the bae6-authz HTTP API. SDKs and the API implementation
     are written against this file.
 
     **Identity and scoping are never taken from request bodies.**
@@ -406,7 +406,7 @@ paths:
         "204":
           description: Written.
           headers:
-            Riz-Audit-Event-Id:
+            Bae6-Audit-Event-Id:
               description: ID of the audit event recorded for this change.
               schema:
                 type: string
@@ -452,7 +452,7 @@ paths:
         "204":
           description: Deleted.
           headers:
-            Riz-Audit-Event-Id:
+            Bae6-Audit-Event-Id:
               description: ID of the audit event recorded for this change.
               schema:
                 type: string
@@ -529,7 +529,7 @@ paths:
         "422":
           description: >-
             The model parsed but an assertion did not hold
-            (`assertions_failed`), or it drops, repeats or changes a riz core type
+            (`assertions_failed`), or it drops, repeats or changes a bae6-authz core type
             (`core_violation`); nothing was bound.
           content:
             application/json:
@@ -683,7 +683,7 @@ paths:
       operationId: putDatabricksProvider
       summary: Create or replace an application's Databricks settings
       description: |
-        Audited (`providers.put`); the audit event ID is in `Riz-Audit-Event-Id`. Unknown
+        Audited (`providers.put`); the audit event ID is in `Bae6-Audit-Event-Id`. Unknown
         fields, including any credential, are rejected. Required scope: `providers:write`;
         the caller's application allow-list applies.
       security:
@@ -830,11 +830,13 @@ components:
     endUserToken:
       type: apiKey
       in: header
-      name: Riz-End-User-Token
+      name: Bae6-End-User-Token
       description: |
         JWT of the end user a check is made for. The API verifies it and derives
         the principal `user:<sub>`; an unverifiable token is rejected
         (`invalid_end_user_token`), never replaced by a service identity.
+        Deprecated: `Riz-End-User-Token` is still read when this header is absent, until
+        the next major version.
   parameters:
     Application:
       name: application
@@ -1164,13 +1166,13 @@ components:
           type: string
           maxLength: 200000
           description: >-
-            A complete model in OpenFGA DSL. It must contain every riz core type exactly
+            A complete model in OpenFGA DSL. It must contain every bae6-authz core type exactly
             once and unchanged. Exactly one of `model` or `extension`.
         extension:
           type: string
           maxLength: 200000
           description: >-
-            Types only (no `model` header) in OpenFGA DSL, composed after the riz core
+            Types only (no `model` header) in OpenFGA DSL, composed after the bae6-authz core
             model, which it may reference but cannot redeclare. Exactly one of `model`
             or `extension`.
         tuples:

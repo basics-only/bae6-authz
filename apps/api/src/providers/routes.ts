@@ -88,7 +88,7 @@ export function providerRoutes(service: ProviderService) {
           config,
           requestIdOf(res),
         );
-        res.setHeader("riz-audit-event-id", auditEventId);
+        res.setHeader("bae6-audit-event-id", auditEventId);
         res.statusCode = 204;
         res.end();
       } else if (req.method === "DELETE") {
@@ -100,7 +100,7 @@ export function providerRoutes(service: ProviderService) {
           application,
           requestIdOf(res),
         );
-        res.setHeader("riz-audit-event-id", auditEventId);
+        res.setHeader("bae6-audit-event-id", auditEventId);
         res.statusCode = 204;
         res.end();
       } else {

@@ -14,10 +14,10 @@ import { providerRoutes } from "./routes.js";
 import { createProviderService } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA (to register applications). Unverified until run.
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 const principals: Record<string, Principal> = {
@@ -115,7 +115,7 @@ async function withApp(
       return {
         status: res.status,
         body: await res.json().catch(() => ({})),
-        audit: res.headers.get("riz-audit-event-id"),
+        audit: res.headers.get("bae6-audit-event-id"),
       };
     };
     await fn({ call, pool });

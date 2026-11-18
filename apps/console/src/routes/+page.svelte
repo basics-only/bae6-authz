@@ -1,2 +1,2 @@
-<h1>riz</h1>
+<h1>authz</h1>
 <p>Authorization control plane console.</p>

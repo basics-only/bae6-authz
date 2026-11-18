@@ -3,7 +3,7 @@
 </script>
 
 <header>
-  <strong>riz</strong>
+  <strong>authz</strong>
   {#if data.subject}
     <nav>
       <a href="/">Home</a>

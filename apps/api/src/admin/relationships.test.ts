@@ -16,10 +16,10 @@ import { createRelationshipService } from "./relationships.js";
 import { createAdminService } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
-const url = process.env.RIZ_DATABASE_URL;
+const url = process.env.BAE6_DATABASE_URL;
 const apiUrl = process.env.OPENFGA_API_URL;
 const opts = {
-  skip: url && apiUrl ? false : "RIZ_DATABASE_URL and OPENFGA_API_URL not set",
+  skip: url && apiUrl ? false : "BAE6_DATABASE_URL and OPENFGA_API_URL not set",
 };
 
 const WRITE = ["relationships:read", "relationships:write"];
@@ -114,7 +114,7 @@ async function withApp(
       return {
         status: res.status,
         body: await res.json().catch(() => null),
-        auditEventId: res.headers.get("riz-audit-event-id"),
+        auditEventId: res.headers.get("bae6-audit-event-id"),
       };
     };
     await fn({ call, pool, resolver });

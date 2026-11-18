@@ -21,13 +21,13 @@ a plain load balancer with no stickiness.
 `tests/load/equivalence.test.ts` sends the same request set (allow, deny, batch, 401, 404)
 repeatedly through a load balancer and asserts every replica returns the same status and
 body (apart from the per-request `requestId`), and that responses came from at least
-`RIZ_REPLICAS` distinct replicas. The compose `replicas` profile provides it: N
-`api-replica` containers behind nginx, which tags each response with `X-Riz-Replica`. CI
+`BAE6_REPLICAS` distinct replicas. The compose `replicas` profile provides it: N
+`api-replica` containers behind nginx, which tags each response with `X-bae6-authz-Replica`. CI
 runs it in the `replicas` job.
 
 ```
 docker compose --profile replicas up -d --build --wait lb
-RIZ_LB_URL=http://localhost:8090 pnpm --filter @riz/api test:replicas
+BAE6_LB_URL=http://localhost:8090 pnpm --filter @bae6/authz-api test:replicas
 ```
 
 ## Consequences and limits
@@ -36,5 +36,5 @@ RIZ_LB_URL=http://localhost:8090 pnpm --filter @riz/api test:replicas
   The compose profile and nginx config were validated with `docker compose config` only;
   running them in containers is **unverified** until CI runs the `replicas` job.
 - nginx resolves replica addresses once at start: restart `lb` after changing
-  `RIZ_REPLICAS`. shortcut: use a real load balancer or service discovery in production.
+  `BAE6_REPLICAS`. shortcut: use a real load balancer or service discovery in production.
 - Rate limits, if added later, would need shared state to hold across replicas.

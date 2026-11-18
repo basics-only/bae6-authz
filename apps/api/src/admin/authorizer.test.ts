@@ -13,7 +13,7 @@ const opts = { skip: apiUrl ? false : "OPENFGA_API_URL not set" };
 async function adminStore() {
   const url = apiUrl as string;
   const { id: storeId } = await new OpenFgaClient({ apiUrl: url }).createStore({
-    name: "riz-admin-test",
+    name: "bae6-admin-test",
   });
   const { authorization_model_id: modelId } = await new OpenFgaClient({
     apiUrl: url,
@@ -21,7 +21,7 @@ async function adminStore() {
   }).writeAuthorizationModel(
     transformer.transformDSLToJSONObject(
       readFileSync(
-        join(import.meta.dirname, "../../../../models/openfga/riz-admin.fga"),
+        join(import.meta.dirname, "../../../../models/openfga/bae6-admin.fga"),
         "utf8",
       ),
     ),

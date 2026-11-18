@@ -1,14 +1,14 @@
-// An Express service that asks riz before returning a document.
+// An Express service that asks authz before returning a document.
 //
-// The caller sends their own token as `Authorization: Bearer <token>`; riz verifies it and
+// The caller sends their own token as `Authorization: Bearer <token>`; authz verifies it and
 // decides whether that user may read the document. See README.md.
-import { Riz, RizApiError, RizValidationError } from "@riz/sdk";
+import { Authz, AuthzApiError, AuthzValidationError } from "@bae6/authz";
 import express from "express";
 
-const riz = new Riz({
-  baseUrl: process.env.RIZ_API_URL,
-  credentials: process.env.RIZ_WORKLOAD_TOKEN,
-  application: process.env.RIZ_APPLICATION,
+const authz = new Authz({
+  baseUrl: process.env.BAE6_API_URL,
+  credentials: process.env.BAE6_WORKLOAD_TOKEN,
+  application: process.env.BAE6_APPLICATION,
 });
 
 const app = express();
@@ -19,18 +19,18 @@ app.get("/documents/:id", async (req, res) => {
     return res.status(401).json({ error: "no user credential" });
   }
   try {
-    const { allowed } = await riz.check({
+    const { allowed } = await authz.check({
       action: "read",
       resource: `document:${req.params.id}`,
       endUserToken,
     });
-    if (!allowed) return res.status(403).json({ error: "denied by riz" });
+    if (!allowed) return res.status(403).json({ error: "denied by authz" });
     return res.json({ id: req.params.id, body: "the document" });
   } catch (err) {
-    if (err instanceof RizValidationError) {
+    if (err instanceof AuthzValidationError) {
       return res.status(404).json({ error: "no such document" });
     }
-    if (err instanceof RizApiError && err.code === "invalid_end_user_token") {
+    if (err instanceof AuthzApiError && err.code === "invalid_end_user_token") {
       return res.status(401).json({ error: "invalid user credential" });
     }
     // Includes "could not decide": an undecided check is a refusal.

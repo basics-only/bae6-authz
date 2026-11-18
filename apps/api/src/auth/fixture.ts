@@ -14,10 +14,10 @@ export function fixtureAuthenticator(env: NodeJS.ProcessEnv): Authenticator {
   if (env.NODE_ENV === "production") {
     throw new Error("fixture authentication must not be used in production");
   }
-  const file = env.RIZ_FIXTURE_AUTH_FILE;
+  const file = env.BAE6_FIXTURE_AUTH_FILE;
   if (!file) {
     throw new Error(
-      "RIZ_FIXTURE_AUTH_FILE is required for fixture authentication",
+      "BAE6_FIXTURE_AUTH_FILE is required for fixture authentication",
     );
   }
 
@@ -62,10 +62,10 @@ export function fixtureEndUserVerifier(
   if (env.NODE_ENV === "production") {
     throw new Error("fixture authentication must not be used in production");
   }
-  const file = env.RIZ_FIXTURE_END_USERS_FILE;
+  const file = env.BAE6_FIXTURE_END_USERS_FILE;
   if (!file) {
     throw new Error(
-      "RIZ_FIXTURE_END_USERS_FILE is required for fixture authentication",
+      "BAE6_FIXTURE_END_USERS_FILE is required for fixture authentication",
     );
   }
 

@@ -2,7 +2,7 @@
 
 ## Decision
 
-An application's model is the riz **core** (`models/openfga/core.fga`: `user`,
+An application's model is the bae6-authz **core** (`models/openfga/core.fga`: `user`,
 `organization`, `application`) plus an application-owned **extension** (types only, for
 example `models/openfga/apps/crm/extension.fga`). Applications add finer-grained roles and
 resources in the extension and build them on core roles (`admin from organization`).

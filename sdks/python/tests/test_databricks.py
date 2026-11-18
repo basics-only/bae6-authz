@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 import pytest
-from riz.databricks import (
+from bae6_authz.databricks import (
     Databricks,
     DatabricksDeniedError,
     DatabricksError,
@@ -200,10 +200,10 @@ def test_a_transport_failure_does_not_carry_the_user_token() -> None:
     not all(
         os.environ.get(v)
         for v in (
-            "RIZ_DATABRICKS_HOST",
-            "RIZ_DATABRICKS_WAREHOUSE_ID",
-            "RIZ_DATABRICKS_USER_TOKEN",
-            "RIZ_DATABRICKS_DENIED_TABLE",
+            "BAE6_DATABRICKS_HOST",
+            "BAE6_DATABRICKS_WAREHOUSE_ID",
+            "BAE6_DATABRICKS_USER_TOKEN",
+            "BAE6_DATABRICKS_DENIED_TABLE",
         )
     ),
     reason="UNVERIFIED: needs an authorized workspace, a user token, and a table that user cannot read",
@@ -211,13 +211,13 @@ def test_a_transport_failure_does_not_carry_the_user_token() -> None:
 def test_unverified_real_unity_catalog_denies_a_user_without_a_grant() -> None:
     async def go() -> None:
         async with Databricks(
-            os.environ["RIZ_DATABRICKS_HOST"], os.environ["RIZ_DATABRICKS_WAREHOUSE_ID"]
+            os.environ["BAE6_DATABRICKS_HOST"], os.environ["BAE6_DATABRICKS_WAREHOUSE_ID"]
         ) as db:
-            token = os.environ["RIZ_DATABRICKS_USER_TOKEN"]
+            token = os.environ["BAE6_DATABRICKS_USER_TOKEN"]
             assert (await db.query("SELECT 1", user_token=token)).rows == [["1"]]
             with pytest.raises(DatabricksDeniedError):
                 await db.query(
-                    f"SELECT * FROM {os.environ['RIZ_DATABRICKS_DENIED_TABLE']} LIMIT 1",
+                    f"SELECT * FROM {os.environ['BAE6_DATABRICKS_DENIED_TABLE']} LIMIT 1",
                     user_token=token,
                 )
 

@@ -30,7 +30,7 @@ before(async () => {
   const verify = oidcTokenVerifier([
     {
       issuer: ISSUER,
-      audience: "riz",
+      audience: "authz",
       jwksUri: `http://127.0.0.1:${(idp.address() as AddressInfo).port}/jwks`,
     },
   ]);
@@ -63,7 +63,7 @@ const token = (claims: { azp: string; sub: string }) =>
   new SignJWT({ azp: claims.azp })
     .setProtectedHeader({ alg: "RS256", kid: "k1" })
     .setIssuer(ISSUER)
-    .setAudience("riz")
+    .setAudience("authz")
     .setSubject(claims.sub)
     .setExpirationTime("5m")
     .sign(privateKey);
@@ -78,7 +78,7 @@ async function check(
     headers: {
       authorization: `Bearer ${workload}`,
       "content-type": "application/json",
-      ...(endUserToken ? { "riz-end-user-token": endUserToken } : {}),
+      ...(endUserToken ? { "bae6-end-user-token": endUserToken } : {}),
       ...extra.headers,
     },
     body: JSON.stringify({
@@ -105,7 +105,7 @@ test("a user named in a header is ignored and in the body is rejected", async ()
   const forgedHeaders = {
     "x-user": "mallory",
     "x-forwarded-user": "mallory",
-    "riz-end-user": "mallory",
+    "authz-end-user": "mallory",
   };
   assert.equal((await check(alice, { headers: forgedHeaders })).status, 200);
   assert.deepEqual(asked, [["crm-prod", "alice"]]);
@@ -135,7 +135,7 @@ test("a user token with no authorized party is refused", async () => {
   const noAzp = await new SignJWT({})
     .setProtectedHeader({ alg: "RS256", kid: "k1" })
     .setIssuer(ISSUER)
-    .setAudience("riz")
+    .setAudience("authz")
     .setSubject("alice")
     .setExpirationTime("5m")
     .sign(privateKey);

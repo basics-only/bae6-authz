@@ -1,42 +1,42 @@
-# riz API: stateless, so any replica count works (docs/decisions/0009-multi-replica.md).
+# authz API: stateless, so any replica count works (docs/decisions/0009-multi-replica.md).
 # Postgres and OpenFGA are external dependencies and are not managed here. Set the URLs below
-# to yours, and create the `riz-api` Secret first (see README.md).
+# to yours, and create the `bae6-authz-api` Secret first (see README.md).
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: riz-api
-  namespace: riz
+  name: bae6-authz-api
+  namespace: bae6-authz
 data:
   PORT: "8080"
-  RIZ_AUTH_MODE: oidc
+  BAE6_AUTH_MODE: oidc
   # On SIGTERM keep listening, unready, this long so the Service drops the pod before it
   # refuses connections. The readiness probe below fails after 3 x 5s; keep this below 22000.
-  RIZ_SHUTDOWN_DELAY_MS: "10000"
+  BAE6_SHUTDOWN_DELAY_MS: "10000"
   OPENFGA_API_URL: http://openfga.openfga.svc.cluster.local:8080
   # Printed by `bootstrap-admin` (docs/decisions/0004-admin-authorization.md). The API will not start without them.
-  RIZ_ADMIN_STORE_ID: replace-with-the-riz-admin-store-id
-  RIZ_ADMIN_MODEL_ID: replace-with-the-riz-admin-model-id
+  BAE6_ADMIN_STORE_ID: replace-with-the-bae6-admin-store-id
+  BAE6_ADMIN_MODEL_ID: replace-with-the-bae6-admin-model-id
   # Workload and end-user token issuers. Replace with your identity provider.
-  # adminAudience is optional: only tokens that carry it can administer riz.
-  RIZ_OIDC_ISSUERS: >-
-    [{"issuer":"https://idp.example.invalid/","audience":"riz","adminAudience":"riz-admin","jwksUri":"https://idp.example.invalid/.well-known/jwks.json"}]
+  # adminAudience is optional: only tokens that carry it can administer authz.
+  BAE6_OIDC_ISSUERS: >-
+    [{"issuer":"https://idp.example.invalid/","audience":"authz","adminAudience":"bae6-admin","jwksUri":"https://idp.example.invalid/.well-known/jwks.json"}]
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: riz-api
-  namespace: riz
+  name: bae6-authz-api
+  namespace: bae6-authz
   labels:
-    app.kubernetes.io/name: riz-api
+    app.kubernetes.io/name: bae6-authz-api
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: riz-api
+      app.kubernetes.io/name: bae6-authz-api
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: riz-api
+        app.kubernetes.io/name: bae6-authz-api
     spec:
       securityContext:
         runAsNonRoot: true
@@ -46,19 +46,19 @@ spec:
       containers:
         - name: api
           # Build and publish this image yourself (deploy/api.Dockerfile).
-          image: riz-api:local
+          image: bae6-authz-api:local
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
           envFrom:
             - configMapRef:
-                name: riz-api
+                name: bae6-authz-api
           env:
-            - name: RIZ_DATABASE_URL
+            - name: BAE6_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: riz-api
+                  name: bae6-authz-api
                   key: database-url
           # Liveness never checks dependencies, so an outage does not restart healthy pods.
           # Readiness does, so a pod that cannot reach Postgres or OpenFGA leaves the Service.
@@ -87,11 +87,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: riz-api
-  namespace: riz
+  name: bae6-authz-api
+  namespace: bae6-authz
 spec:
   selector:
-    app.kubernetes.io/name: riz-api
+    app.kubernetes.io/name: bae6-authz-api
   ports:
     - name: http
       port: 80
@@ -100,26 +100,26 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: riz-api
-  namespace: riz
+  name: bae6-authz-api
+  namespace: bae6-authz
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: riz-api
+      app.kubernetes.io/name: bae6-authz-api
 ---
 # Example: needs a metrics-server. Scales on CPU against the request above. When this is
 # applied, remove `replicas` from the Deployment so the two do not fight.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: riz-api
-  namespace: riz
+  name: bae6-authz-api
+  namespace: bae6-authz
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: riz-api
+    name: bae6-authz-api
   minReplicas: 2
   maxReplicas: 10
   metrics:
