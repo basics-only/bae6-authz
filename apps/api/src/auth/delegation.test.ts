@@ -10,6 +10,7 @@ import { oidcTokenVerifier } from "./oidc.js";
 import { oidcEndUserVerifier, workloadAuthenticator } from "./workloads.js";
 
 const ISSUER = "https://idp.example.test";
+const OTHER_TENANT_ISSUER = "https://idp.globex.test";
 
 let idp: Server;
 let api: Server;
@@ -27,16 +28,19 @@ before(async () => {
     res.end(JSON.stringify({ keys: [jwk] }));
   });
   await new Promise<void>((r) => idp.listen(0, "127.0.0.1", r));
+  const jwksUri = `http://127.0.0.1:${(idp.address() as AddressInfo).port}/jwks`;
   const verify = oidcTokenVerifier([
+    { issuer: ISSUER, organization: "acme", audience: "authz", jwksUri },
     {
-      issuer: ISSUER,
+      issuer: OTHER_TENANT_ISSUER,
+      organization: "globex",
       audience: "authz",
-      jwksUri: `http://127.0.0.1:${(idp.address() as AddressInfo).port}/jwks`,
+      jwksUri,
     },
   ]);
   const service = {
-    check: async (application: string, user: string) => {
-      asked.push([application, user]);
+    check: async (organization: string, application: string, user: string) => {
+      asked.push([organization, application, user]);
       return { status: "allow" };
     },
   } as unknown as CheckService;
@@ -59,10 +63,10 @@ after(() => {
   api.close();
 });
 
-const token = (claims: { azp: string; sub: string }) =>
+const token = (claims: { azp: string; sub: string }, issuer = ISSUER) =>
   new SignJWT({ azp: claims.azp })
     .setProtectedHeader({ alg: "RS256", kid: "k1" })
-    .setIssuer(ISSUER)
+    .setIssuer(issuer)
     .setAudience("authz")
     .setSubject(claims.sub)
     .setExpirationTime("5m")
@@ -96,7 +100,7 @@ test("a delegated token for user U lets the workload check only as U", async () 
   asked.length = 0;
   const result = await check(await token({ azp: "crm-service", sub: "alice" }));
   assert.equal(result.status, 200);
-  assert.deepEqual(asked, [["crm-prod", "alice"]]);
+  assert.deepEqual(asked, [["acme", "crm-prod", "alice"]]);
 });
 
 test("a user named in a header is ignored and in the body is rejected", async () => {
@@ -108,7 +112,7 @@ test("a user named in a header is ignored and in the body is rejected", async ()
     "authz-end-user": "mallory",
   };
   assert.equal((await check(alice, { headers: forgedHeaders })).status, 200);
-  assert.deepEqual(asked, [["crm-prod", "alice"]]);
+  assert.deepEqual(asked, [["acme", "crm-prod", "alice"]]);
 
   asked.length = 0;
   assert.equal((await check(alice, { body: { user: "mallory" } })).status, 400);
@@ -118,6 +122,18 @@ test("a user named in a header is ignored and in the body is rejected", async ()
 test("a forged identity with no end-user token cannot check", async () => {
   asked.length = 0;
   const result = await check(undefined, { headers: { "x-user": "alice" } });
+  assert.equal(result.status, 401);
+  assert.equal(result.code, "invalid_end_user_token");
+  assert.deepEqual(asked, []);
+});
+
+test("a user token from another organization's issuer is refused", async () => {
+  asked.length = 0;
+  const foreign = await token(
+    { azp: "crm-service", sub: "alice" },
+    OTHER_TENANT_ISSUER,
+  );
+  const result = await check(foreign);
   assert.equal(result.status, 401);
   assert.equal(result.code, "invalid_end_user_token");
   assert.deepEqual(asked, []);

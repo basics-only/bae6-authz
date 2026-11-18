@@ -26,13 +26,14 @@ export function endUserVerifierFromEnv(
   throw new Error("BAE6_AUTH_MODE must be set (supported: fixture, oidc)");
 }
 
-function issuersFromEnv(env: NodeJS.ProcessEnv): OidcIssuer[] {
+export function issuersFromEnv(env: NodeJS.ProcessEnv): OidcIssuer[] {
   try {
     const parsed: unknown = JSON.parse(env.BAE6_OIDC_ISSUERS ?? "");
     if (!Array.isArray(parsed)) throw new Error();
     return parsed.map((i: Record<string, unknown>) => {
       if (
         typeof i.issuer !== "string" ||
+        typeof i.organization !== "string" ||
         typeof i.audience !== "string" ||
         typeof i.jwksUri !== "string" ||
         (i.adminAudience !== undefined && typeof i.adminAudience !== "string")
@@ -41,6 +42,7 @@ function issuersFromEnv(env: NodeJS.ProcessEnv): OidcIssuer[] {
       }
       return {
         issuer: i.issuer,
+        organization: i.organization,
         audience: i.audience,
         jwksUri: i.jwksUri,
         ...(i.adminAudience === undefined
@@ -50,7 +52,7 @@ function issuersFromEnv(env: NodeJS.ProcessEnv): OidcIssuer[] {
     });
   } catch {
     throw new Error(
-      'BAE6_OIDC_ISSUERS must be a JSON array of {"issuer","audience","jwksUri"}',
+      'BAE6_OIDC_ISSUERS must be a JSON array of {"issuer","organization","audience","jwksUri"}',
     );
   }
 }

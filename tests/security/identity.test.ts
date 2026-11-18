@@ -73,7 +73,7 @@ before(async () => {
     NODE_ENV: "development",
     BAE6_AUTH_MODE: "oidc",
     BAE6_OIDC_ISSUERS: JSON.stringify([
-      { issuer: ISSUER, audience: AUDIENCE, jwksUri },
+      { issuer: ISSUER, organization: "acme", audience: AUDIENCE, jwksUri },
     ]),
   });
   call = client(oidcApi.url);

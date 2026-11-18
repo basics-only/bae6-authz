@@ -1,4 +1,5 @@
 import { OpenFgaClient } from "@openfga/sdk";
+import { ORGANIZATION_ID } from "../auth/principal.js";
 import { HttpError } from "../http.js";
 
 export type OrganizationRelation =
@@ -13,8 +14,6 @@ export type ApplicationRelation =
   | "can_manage_relationships"
   | "can_manage_model"
   | "can_read_audit";
-
-export const ORGANIZATION = "organization:default";
 
 // The subject is spliced into `user:<subject>`; anything outside this set (`:`, `#`, `|`, spaces)
 // could name another OpenFGA object, so it is denied rather than escaped.
@@ -62,8 +61,15 @@ export function createAdminAuthorizer(config: {
   }
 
   return {
-    organization: (subject: string, relation: OrganizationRelation) =>
-      check(subject, relation, ORGANIZATION),
+    /** `organization` comes from the verified principal, never from the request. */
+    organization: (
+      subject: string,
+      relation: OrganizationRelation,
+      organization: string,
+    ) =>
+      ORGANIZATION_ID.test(organization)
+        ? check(subject, relation, `organization:${organization}`)
+        : Promise.resolve(false),
 
     application(
       subject: string,

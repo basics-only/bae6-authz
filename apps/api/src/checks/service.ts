@@ -54,6 +54,7 @@ export function createCheckService(deps: {
    * `fail` builds the answer when no decision can be made.
    */
   async function guarded<T>(
+    organization: string,
     applicationId: string,
     operation: "check" | "batch_check",
     call: (client: OpenFgaClient, modelId: string) => Promise<T>,
@@ -61,7 +62,7 @@ export function createCheckService(deps: {
   ): Promise<T> {
     let client: OpenFgaClient;
     try {
-      client = await resolver.clientFor(applicationId);
+      client = await resolver.clientFor(organization, applicationId);
     } catch (err) {
       if (err instanceof ApplicationNotFound) throw err;
       if (err instanceof NoActiveModel) return fail("no_active_model");
@@ -105,6 +106,7 @@ export function createCheckService(deps: {
 
   return {
     check(
+      organization: string,
       applicationId: string,
       endUser: string,
       input: {
@@ -114,6 +116,7 @@ export function createCheckService(deps: {
       },
     ): Promise<CheckResult> {
       return guarded<CheckResult>(
+        organization,
         applicationId,
         "check",
         async (client, modelId) => {
@@ -133,6 +136,7 @@ export function createCheckService(deps: {
 
     /** One result per item, matched to OpenFGA's answers by correlation ID. */
     batch(
+      organization: string,
       applicationId: string,
       endUser: string,
       items: BatchItem[],
@@ -145,6 +149,7 @@ export function createCheckService(deps: {
         })),
       });
       return guarded<BatchResult>(
+        organization,
         applicationId,
         "batch_check",
         async (client, modelId) => {

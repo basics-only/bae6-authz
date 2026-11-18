@@ -12,8 +12,8 @@ The model is `models/openfga/bae6-admin.fga`; its assertions are `bae6-admin.tes
 
 | Role | Granted by tuple | Can |
 | --- | --- | --- |
-| security admin | `user:<sub> security_admin organization:default` | everything, on every application |
-| auditor | `user:<sub> auditor organization:default` | read applications and audit, mutate nothing |
+| security admin | `user:<sub> security_admin organization:<org>` | everything, on every application of that organization |
+| auditor | `user:<sub> auditor organization:<org>` | read that organization's applications and audit, mutate nothing |
 | application admin | `user:<sub> admin application:<id>` | read, manage relationships and model of that application only |
 
 The API evaluates these through `createAdminAuthorizer` (`apps/api/src/admin/authorizer.ts`)
@@ -58,8 +58,11 @@ No credentials are baked in; the operator names the first admin workload.
 ```sh
 OPENFGA_API_URL=http://localhost:8081 \
   pnpm --filter @bae6/authz-scripts exec tsx src/cli.ts bootstrap-admin \
-  --issuer <issuer> --workload <client id>
+  --organization <org> --issuer <issuer> --workload <client id>
 ```
+
+`<org>` is the `organization` of that issuer in `BAE6_OIDC_ISSUERS`: roles are only read on
+the caller's own organization ([contracts ADR 0002](https://github.com/basics-only/bae6-contracts/blob/main/docs/adr/0002-tenant-boundaries.md)).
 
 `--admin <subject>` names a subject directly instead (a plain identifier, such as an
 already-computed hash). The command creates the `bae6-admin` store, writes and validates the model, writes the
@@ -74,8 +77,8 @@ Set both in the API's environment. It refuses to run when a `bae6-admin` store a
 exists. To grant further roles afterwards, write tuples to that store (table above) with
 the OpenFGA CLI or API.
 
-Every application needs a parent tuple `organization:default organization application:<id>`
-in the admin store for org-level roles to reach it.
+Org-level roles reach an application through the API's queries, which are all scoped to
+the caller's organization, not through a parent tuple.
 
 ## Limitations
 
@@ -85,6 +88,7 @@ in the admin store for org-level roles to reach it.
   per-route, per-application check, and registration must then write the parent tuple.
 - Each admin request makes three checks against the admin store, in parallel. Fine for
   administrative traffic; cache them if that ever changes.
-- Single organization, `organization:default`.
+- `application:<id>` objects are not scoped by organization, and the same ID can exist in two
+  organizations. Application-level roles must name the organization before they are enforced.
 - Rotating `BAE6_ADMIN_MODEL_ID` is a manual, versioned step: write the new model, then
   change the variable.

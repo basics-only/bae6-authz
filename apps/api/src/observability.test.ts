@@ -81,7 +81,12 @@ async function withRiz(
     log: () => {},
     authenticate: (h) =>
       h === "Bearer svc-token"
-        ? { subject: "svc", scopes: ["check"], applications: ["*"] }
+        ? {
+            subject: "svc",
+            organization: "acme",
+            scopes: ["check"],
+            applications: ["*"],
+          }
         : null,
     routes: checkRoutes({
       service: createCheckService({ resolver, timeoutMs: 2000 }),

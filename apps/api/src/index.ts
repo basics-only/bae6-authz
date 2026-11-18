@@ -14,6 +14,7 @@ import { createAdminService } from "./admin/service.js";
 import {
   authenticatorFromEnv,
   endUserVerifierFromEnv,
+  issuersFromEnv,
   oidcAuthFromEnv,
   type Principal,
 } from "./auth/index.js";
@@ -72,6 +73,21 @@ try {
   await migrate(migrator);
 } finally {
   migrator.release();
+}
+
+// Migration 003 put pre-tenancy rows in `default`; without an issuer for it they vanish.
+if (
+  process.env.BAE6_AUTH_MODE === "oidc" &&
+  !issuersFromEnv(process.env).some((i) => i.organization === "default")
+) {
+  const legacy = await pool.query(
+    "SELECT 1 FROM applications WHERE organization_id = 'default' LIMIT 1",
+  );
+  if (legacy.rowCount) {
+    throw new Error(
+      "applications from before tenancy belong to organization `default`, which no BAE6_OIDC_ISSUERS entry maps to; map their issuer to `default`",
+    );
+  }
 }
 
 const baseModel = transformer.transformDSLToJSONObject(

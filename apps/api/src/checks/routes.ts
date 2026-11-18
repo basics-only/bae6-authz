@@ -187,6 +187,7 @@ export function checkRoutes(deps: {
         permit(application);
         recordBatchSize(items.length);
         const batch = await deps.service.batch(
+          principal.organization,
           application,
           endUser,
           items,
@@ -198,6 +199,7 @@ export function checkRoutes(deps: {
         const input = checkBody(body);
         permit(input.application);
         const single = await deps.service.check(
+          principal.organization,
           input.application,
           endUser,
           input,

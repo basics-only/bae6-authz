@@ -27,7 +27,8 @@ export const adminSubject = (issuer: string, workload: string) =>
     .digest("hex");
 
 /**
- * Adds the admin scopes a workload holds in the bae6-admin store, on all applications.
+ * Adds the admin scopes a workload holds for its own organization in the bae6-admin store,
+ * on all of that organization's applications (every query is scoped to it).
  * Only organization roles are read: an application-level admin gets no scopes yet, since
  * scopes are global and could not keep it to its own application.
  * For admin routes only. The check path must never wait on the admin store.
@@ -40,10 +41,11 @@ export function withAdminScopes(authorizer: AdminAuthorizer) {
       return principal;
     }
     const subject = adminSubject(principal.issuer, principal.clientId);
+    const org = principal.organization;
     const [security, readApps, readAudit] = await Promise.all([
-      authorizer.organization(subject, "security_admin"),
-      authorizer.organization(subject, "can_read_applications"),
-      authorizer.organization(subject, "can_read_audit"),
+      authorizer.organization(subject, "security_admin", org),
+      authorizer.organization(subject, "can_read_applications", org),
+      authorizer.organization(subject, "can_read_audit", org),
     ]);
     const granted = security
       ? SECURITY_ADMIN

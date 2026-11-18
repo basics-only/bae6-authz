@@ -46,10 +46,15 @@ export function createAdminService(deps: {
 }) {
   const { pool, apiUrl, baseModel } = deps;
 
-  async function get(id: string, allowed: Allowed): Promise<Application> {
+  async function get(
+    organization: string,
+    id: string,
+    allowed: Allowed,
+  ): Promise<Application> {
     const { rows } = await pool.query(
-      "SELECT id, name, environment, created_at FROM applications WHERE id = $1",
-      [id],
+      `SELECT id, name, environment, created_at FROM applications
+        WHERE organization_id = $1 AND id = $2`,
+      [organization, id],
     );
     // Unknown and not-allow-listed look the same, so existence is not leaked.
     if (!rows[0] || !(allowed.includes("*") || allowed.includes(id))) {
@@ -63,13 +68,14 @@ export function createAdminService(deps: {
 
     async register(
       actor: string,
+      organization: string,
       input: { name: string; environment: string },
       requestId?: string,
     ): Promise<Application> {
       const id = `${input.name}-${input.environment}`;
       const existing = await pool.query(
-        "SELECT 1 FROM applications WHERE id = $1",
-        [id],
+        "SELECT 1 FROM applications WHERE organization_id = $1 AND id = $2",
+        [organization, id],
       );
       if (existing.rowCount) throw new ApplicationExists(id);
 
@@ -90,17 +96,19 @@ export function createAdminService(deps: {
       try {
         await client.query("BEGIN");
         const { rows } = await client.query(
-          `INSERT INTO applications (id, name, environment, store_id)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO applications (organization_id, id, name, environment, store_id)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING id, name, environment, created_at`,
-          [id, input.name, input.environment, storeId],
+          [organization, id, input.name, input.environment, storeId],
         );
         await client.query(
-          "INSERT INTO model_bindings (application_id, model_id, active) VALUES ($1, $2, true)",
-          [id, modelId],
+          `INSERT INTO model_bindings (organization_id, application_id, model_id, active)
+           VALUES ($1, $2, $3, true)`,
+          [organization, id, modelId],
         );
         await recordAudit(client, {
           actor,
+          organization,
           action: "applications.create",
           applicationId: id,
           requestId,
@@ -120,12 +128,22 @@ export function createAdminService(deps: {
       }
     },
 
-    async list(allowed: Allowed, page: PageParams): Promise<Page<Application>> {
+    async list(
+      organization: string,
+      allowed: Allowed,
+      page: PageParams,
+    ): Promise<Page<Application>> {
       const { rows } = await pool.query(
         `SELECT id, name, environment, created_at FROM applications
-          WHERE ($1::boolean OR id = ANY($2)) AND id > $3
+          WHERE organization_id = $5 AND ($1::boolean OR id = ANY($2)) AND id > $3
           ORDER BY id LIMIT $4`,
-        [allowed.includes("*"), allowed, decode(page.cursor), page.limit + 1],
+        [
+          allowed.includes("*"),
+          allowed,
+          decode(page.cursor),
+          page.limit + 1,
+          organization,
+        ],
       );
       const items = rows.slice(0, page.limit).map(toApplication);
       const last = items.at(-1);
@@ -134,22 +152,27 @@ export function createAdminService(deps: {
         : { items };
     },
 
-    audit: (allowed: Allowed, page: PageParams, filter?: AuditFilter) =>
-      listAudit(pool, allowed, page, filter),
+    audit: (
+      organization: string,
+      allowed: Allowed,
+      page: PageParams,
+      filter?: AuditFilter,
+    ) => listAudit(pool, organization, allowed, page, filter),
 
     async models(
+      organization: string,
       applicationId: string,
       allowed: Allowed,
       page: PageParams,
     ): Promise<Page<ModelEntry>> {
-      await get(applicationId, allowed);
+      await get(organization, applicationId, allowed);
       const after = decode(page.cursor) || "0";
       if (!/^\d{1,18}$/.test(after)) throw new InvalidCursor();
       const { rows } = await pool.query(
         `SELECT id, model_id, active, bound_at FROM model_bindings
-          WHERE application_id = $1 AND id > $2
+          WHERE organization_id = $4 AND application_id = $1 AND id > $2
           ORDER BY id LIMIT $3`,
-        [applicationId, after, page.limit + 1],
+        [applicationId, after, page.limit + 1, organization],
       );
       const kept = rows.slice(0, page.limit);
       const items = kept.map((r) => ({

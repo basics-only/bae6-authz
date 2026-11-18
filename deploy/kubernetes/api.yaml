@@ -19,7 +19,7 @@ data:
   # Workload and end-user token issuers. Replace with your identity provider.
   # adminAudience is optional: only tokens that carry it can administer authz.
   BAE6_OIDC_ISSUERS: >-
-    [{"issuer":"https://idp.example.invalid/","audience":"authz","adminAudience":"bae6-admin","jwksUri":"https://idp.example.invalid/.well-known/jwks.json"}]
+    [{"issuer":"https://idp.example.invalid/","organization":"example","audience":"authz","adminAudience":"bae6-admin","jwksUri":"https://idp.example.invalid/.well-known/jwks.json"}]
 ---
 apiVersion: apps/v1
 kind: Deployment

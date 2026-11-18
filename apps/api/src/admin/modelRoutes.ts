@@ -117,7 +117,7 @@ export function modelRoutes(service: ModelService) {
         permit(principal, application);
         send(res, 200, {
           id: byId,
-          model: await service.read(application, byId),
+          model: await service.read(principal.organization, application, byId),
         });
         return true;
       } catch (err) {
@@ -149,6 +149,7 @@ export function modelRoutes(service: ModelService) {
           200,
           await service.rollback(
             principal.subject,
+            principal.organization,
             application,
             b.modelId,
             requestIdOf(res),
@@ -162,6 +163,7 @@ export function modelRoutes(service: ModelService) {
           201,
           await service.submit(
             principal.subject,
+            principal.organization,
             input.application,
             input,
             requestIdOf(res),

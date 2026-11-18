@@ -10,8 +10,9 @@ export interface WorkloadBinding {
   application: string;
 }
 
-/** Application IDs a workload is bound to. */
+/** Application IDs a workload is bound to, within its organization. */
 export type BindingLookup = (
+  organization: string,
   issuer: string,
   workload: string,
 ) => Promise<string[]>;
@@ -35,8 +36,13 @@ export function workloadAuthenticator(
     const workload = [azp, clientId].find(nonEmpty) ?? verified.subject;
     return {
       subject: `${verified.issuer}|${workload}`,
+      organization: verified.organization,
       scopes: ["check"],
-      applications: await lookup(verified.issuer, workload),
+      applications: await lookup(
+        verified.organization,
+        verified.issuer,
+        workload,
+      ),
       clientId: workload,
       issuer: verified.issuer,
       ...(verified.admin ? { admin: true as const } : {}),
@@ -46,13 +52,20 @@ export function workloadAuthenticator(
 
 /**
  * The end user is the token's verified `sub`, and only if the token was issued
- * to the calling workload (`azp`), so another workload cannot replay it.
+ * to the calling workload (`azp`), so another workload cannot replay it, by an
+ * issuer of the caller's own organization.
  */
 export function oidcEndUserVerifier(verify: TokenVerifier): EndUserVerifier {
   return async (token, caller) => {
     if (!token || !caller.clientId) return null;
     const verified = await verify(token);
-    if (!verified || verified.claims.azp !== caller.clientId) return null;
+    if (
+      !verified ||
+      verified.claims.azp !== caller.clientId ||
+      verified.organization !== caller.organization
+    ) {
+      return null;
+    }
     return verified.subject;
   };
 }
@@ -60,6 +73,7 @@ export function oidcEndUserVerifier(verify: TokenVerifier): EndUserVerifier {
 export function createBindingStore(pool: pg.Pool) {
   async function audited(
     actor: string,
+    organization: string,
     action: string,
     b: WorkloadBinding,
     sql: string,
@@ -72,6 +86,7 @@ export function createBindingStore(pool: pg.Pool) {
       const { rowCount } = await client.query(sql, [
         b.issuer,
         b.workload,
+        organization,
         b.application,
       ]);
       // An idempotent repeat changes nothing, so it is not an event.
@@ -79,6 +94,7 @@ export function createBindingStore(pool: pg.Pool) {
         const binding = { issuer: b.issuer, workload: b.workload };
         await recordAudit(client, {
           actor,
+          organization,
           action,
           applicationId: b.application,
           requestId,
@@ -100,32 +116,46 @@ export function createBindingStore(pool: pg.Pool) {
   }
 
   return {
-    lookup: (async (issuer, workload) => {
+    lookup: (async (organization, issuer, workload) => {
       const { rows } = await pool.query<{ application_id: string }>(
-        "SELECT application_id FROM workload_bindings WHERE issuer = $1 AND workload = $2",
-        [issuer, workload],
+        `SELECT application_id FROM workload_bindings
+          WHERE issuer = $1 AND workload = $2 AND organization_id = $3`,
+        [issuer, workload, organization],
       );
       return rows.map((r) => r.application_id);
     }) satisfies BindingLookup,
 
-    bind: (actor: string, b: WorkloadBinding, requestId?: string) =>
+    bind: (
+      actor: string,
+      organization: string,
+      b: WorkloadBinding,
+      requestId?: string,
+    ) =>
       audited(
         actor,
+        organization,
         "workloads.bind",
         b,
-        `INSERT INTO workload_bindings (issuer, workload, application_id)
-         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        `INSERT INTO workload_bindings (issuer, workload, organization_id, application_id)
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
         true,
         requestId,
       ),
 
-    unbind: (actor: string, b: WorkloadBinding, requestId?: string) =>
+    unbind: (
+      actor: string,
+      organization: string,
+      b: WorkloadBinding,
+      requestId?: string,
+    ) =>
       audited(
         actor,
+        organization,
         "workloads.unbind",
         b,
         `DELETE FROM workload_bindings
-          WHERE issuer = $1 AND workload = $2 AND application_id = $3`,
+          WHERE issuer = $1 AND workload = $2 AND organization_id = $3
+            AND application_id = $4`,
         false,
         requestId,
       ),

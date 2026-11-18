@@ -23,26 +23,41 @@ const opts = {
 const principals: Record<string, Principal> = {
   platform: {
     subject: "platform",
+    organization: "acme",
     scopes: ["providers:read", "providers:write"],
     applications: ["*"],
   },
   crmAdmin: {
     subject: "crm-admin",
+    organization: "acme",
     scopes: ["providers:read", "providers:write"],
     applications: ["crm-prod"],
   },
   // The bound workload: may read its settings, never change them.
   workload: {
     subject: "crm-app",
+    organization: "acme",
     scopes: ["check"],
     applications: ["crm-prod"],
   },
   reader: {
     subject: "reader",
+    organization: "acme",
     scopes: ["providers:read"],
     applications: ["*"],
   },
-  noScopes: { subject: "nobody", scopes: [], applications: ["*"] },
+  noScopes: {
+    subject: "nobody",
+    organization: "acme",
+    scopes: [],
+    applications: ["*"],
+  },
+  otherTenant: {
+    subject: "globex-platform",
+    organization: "globex",
+    scopes: ["providers:read", "providers:write"],
+    applications: ["*"],
+  },
 };
 
 const config = {
@@ -94,7 +109,7 @@ async function withApp(
       ),
     });
     for (const name of ["crm", "hr"]) {
-      await admin.register("platform", { name, environment: "prod" });
+      await admin.register("platform", "acme", { name, environment: "prod" });
     }
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const { port } = server.address() as AddressInfo;
@@ -191,6 +206,34 @@ test(
         "SELECT config FROM provider_configs WHERE application_id = 'crm-prod'",
       );
       assert.deepEqual(rows[0]?.config, config);
+    }),
+);
+
+test(
+  "a provider admin of another organization cannot read, change or remove these settings",
+  opts,
+  () =>
+    withApp(async ({ call, pool }) => {
+      await call("platform", "PUT", P, { application: "crm-prod", config });
+
+      assert.equal((await call("otherTenant", "GET", crm)).status, 404);
+      assert.equal(
+        (
+          await call("otherTenant", "PUT", P, {
+            application: "crm-prod",
+            config: { ...config, warehouseId: "other" },
+          })
+        ).status,
+        404,
+      );
+      assert.equal((await call("otherTenant", "DELETE", crm)).status, 404);
+      const { rows } = await pool.query(
+        "SELECT config FROM provider_configs WHERE application_id = 'crm-prod'",
+      );
+      assert.deepEqual(
+        rows.map((r) => r.config),
+        [config],
+      );
     }),
 );
 

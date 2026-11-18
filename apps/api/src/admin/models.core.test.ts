@@ -38,7 +38,11 @@ const assertions = [
   },
 ];
 const submit = (input: { model?: string; extension?: string }, svc = service) =>
-  svc.submit("actor", "crm-prod", { tuples: [], assertions, ...input });
+  svc.submit("actor", "acme", "crm-prod", {
+    tuples: [],
+    assertions,
+    ...input,
+  });
 
 const folder = `type folder
   relations

@@ -1,6 +1,11 @@
+/** An organization ID (the tenant, bae6-contracts ADR-0002); also an OpenFGA object ID. */
+export const ORGANIZATION_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
 /** The verified caller of a request. Handlers receive this, never raw credentials. */
 export interface Principal {
   subject: string;
+  /** The tenant, mapped from configuration (the token's issuer), never from the request. */
+  organization: string;
   scopes: readonly string[];
   /** Application IDs this caller may act on. */
   applications: readonly string[];

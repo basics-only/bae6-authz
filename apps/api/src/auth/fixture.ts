@@ -1,5 +1,10 @@
 import { readFileSync } from "node:fs";
-import type { Authenticator, EndUserVerifier, Principal } from "./principal.js";
+import {
+  type Authenticator,
+  type EndUserVerifier,
+  ORGANIZATION_ID,
+  type Principal,
+} from "./principal.js";
 
 function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every((s) => typeof s === "string");
@@ -7,7 +12,7 @@ function isStringArray(v: unknown): v is string[] {
 
 /**
  * Development-only authentication from a static file mapping bearer token to
- * principal: `{"<token>": {"subject": "...", "scopes": [...], "applications": [...]}}`.
+ * principal: `{"<token>": {"subject", "organization", "scopes": [...], "applications": [...]}}`.
  * Refuses to load in production. Errors never include file contents, which hold credentials.
  */
 export function fixtureAuthenticator(env: NodeJS.ProcessEnv): Authenticator {
@@ -29,6 +34,8 @@ export function fixtureAuthenticator(env: NodeJS.ProcessEnv): Authenticator {
       if (
         !token ||
         typeof p?.subject !== "string" ||
+        typeof p.organization !== "string" ||
+        !ORGANIZATION_ID.test(p.organization) ||
         !isStringArray(p.scopes) ||
         !isStringArray(p.applications)
       ) {
@@ -36,6 +43,7 @@ export function fixtureAuthenticator(env: NodeJS.ProcessEnv): Authenticator {
       }
       tokens.set(token, {
         subject: p.subject,
+        organization: p.organization,
         scopes: p.scopes,
         applications: p.applications,
       });

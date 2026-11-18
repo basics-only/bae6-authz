@@ -111,6 +111,7 @@ export function relationshipRoutes(service: RelationshipService) {
           res,
           200,
           await service.list(
+            principal.organization,
             application,
             { object, relation },
             pageParams(url),
@@ -136,6 +137,7 @@ export function relationshipRoutes(service: RelationshipService) {
         permit(principal, application);
         const auditEventId = await service.write(
           principal.subject,
+          principal.organization,
           application,
           relationships,
           requestIdOf(res),
@@ -154,6 +156,7 @@ export function relationshipRoutes(service: RelationshipService) {
         permit(principal, application);
         const auditEventId = await service.remove(
           principal.subject,
+          principal.organization,
           application,
           relationship,
           requestIdOf(res),
