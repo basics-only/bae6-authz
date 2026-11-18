@@ -1126,7 +1126,8 @@ components:
           type: string
           description: |
             Present only when the list could not be computed, with `objects` empty:
-            `timeout`, `backend_error` or `no_active_model`. New values may be added.
+            `timeout`, `backend_error`, `no_active_model`, or `result_truncated` when the
+            user holds more objects than authz can list completely. New values may be added.
     BatchCheckResult:
       type: object
       required: [correlationId, status]

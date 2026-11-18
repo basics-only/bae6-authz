@@ -26,7 +26,7 @@ export function endUserVerifierFromEnv(
   throw new Error("BAE6_AUTH_MODE must be set (supported: fixture, oidc)");
 }
 
-function issuersFromEnv(env: NodeJS.ProcessEnv): OidcIssuer[] {
+export function issuersFromEnv(env: NodeJS.ProcessEnv): OidcIssuer[] {
   try {
     const parsed: unknown = JSON.parse(env.BAE6_OIDC_ISSUERS ?? "");
     if (!Array.isArray(parsed)) throw new Error();

@@ -15,7 +15,7 @@ import { migrate } from "../db/migrate.js";
 import { createApp } from "../server.js";
 import { createResolver, dbLookup } from "./resolver.js";
 import { checkRoutes } from "./routes.js";
-import { createCheckService } from "./service.js";
+import { createCheckService, LIST_OBJECTS_MAX_RESULTS } from "./service.js";
 
 // Integration: needs Postgres and OpenFGA. Unverified until run against both.
 const url = process.env.BAE6_DATABASE_URL;
@@ -873,5 +873,36 @@ test(
       assert.deepEqual(res.body.objects, []);
       assert.equal(res.body.code, "backend_error");
       assert.equal("modelId" in res.body, false);
+    }),
+);
+
+test(
+  "list-objects lists nothing, with a code, when OpenFGA may have truncated the list",
+  opts,
+  () =>
+    withApp(async ({ callWith }) => {
+      const upstream = createServer((_, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            objects: Array.from(
+              { length: LIST_OBJECTS_MAX_RESULTS },
+              (_, i) => `document:d${i}`,
+            ),
+          }),
+        );
+      });
+      const port = await listen(upstream);
+      try {
+        const call = await callWith(`http://127.0.0.1:${port}`, 2000);
+        const res = await call("admin", listRead, "alice-token", LIST);
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body.objects, []);
+        assert.equal(res.body.code, "result_truncated");
+        assert.equal("nextCursor" in res.body, false);
+      } finally {
+        upstream.closeAllConnections();
+        upstream.close();
+      }
     }),
 );
