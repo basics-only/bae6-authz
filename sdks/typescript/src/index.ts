@@ -38,6 +38,15 @@ export interface BatchDecision {
   results: ItemDecision[];
 }
 
+export interface ObjectPage {
+  requestId: string;
+  modelId?: string;
+  /** Ascending `type:id` objects the user holds the action on. */
+  objects: string[];
+  /** Pass as `cursor` for the next page; absent on the last page. */
+  nextCursor?: string;
+}
+
 export class AuthzError extends Error {
   readonly requestId: string | undefined;
   constructor(message: string, requestId?: string, options?: ErrorOptions) {
@@ -210,6 +219,46 @@ export class Authz {
       requestId,
       ...(modelId === undefined ? {} : { modelId }),
       results: checks.map((_, i) => itemDecision(byId.get(String(i)))),
+    };
+  }
+
+  /**
+   * One page of the `type` objects `endUserToken`'s user holds `action` on. Raises
+   * AuthzIndeterminateError when authz cannot list; never returns a partial guess then.
+   */
+  async listObjects(input: {
+    action: string;
+    type: string;
+    endUserToken: string;
+    limit?: number;
+    cursor?: string;
+    consistency?: Consistency;
+  }): Promise<ObjectPage> {
+    const { action, endUserToken, ...rest } = input;
+    const body = await this.#post("/v1/list-objects", endUserToken, {
+      application: this.#application,
+      relation: action,
+      ...rest,
+    });
+    const requestId = str(body.requestId);
+    const { objects } = body;
+    if (
+      requestId === undefined ||
+      !Array.isArray(objects) ||
+      !objects.every((o) => typeof o === "string")
+    ) {
+      throw invalidResponse();
+    }
+    if (body.code !== undefined) {
+      throw new AuthzIndeterminateError(str(body.code), requestId);
+    }
+    const modelId = str(body.modelId);
+    const nextCursor = str(body.nextCursor);
+    return {
+      requestId,
+      ...(modelId === undefined ? {} : { modelId }),
+      objects,
+      ...(nextCursor === undefined ? {} : { nextCursor }),
     };
   }
 

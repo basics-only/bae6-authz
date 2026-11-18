@@ -1,6 +1,6 @@
 # SDK conformance suite
 
-Both SDKs must pass every case in `cases/`, so `check` and `batchCheck` behave
+Both SDKs must pass every case in `cases/`, so `check`, `batchCheck` and `listObjects` behave
 the same in TypeScript and Python. Each SDK has its own loader that starts a
 local HTTP server, answers with the case's response and compares what the SDK
 does with what the case expects.
@@ -22,7 +22,7 @@ One JSON file per case. Every case uses application `crm`, bearer token
 | --- | --- |
 | `name` | The behavior under test. |
 | `client.timeoutMs` | Optional timeout override. |
-| `call` | `operation` (`check` or `batchCheck`), `endUserToken`, optionally `consistency`, and `action` + `resource` or `checks`. A check with `count: n` stands for n copies. |
+| `call` | `operation` (`check`, `batchCheck` or `listObjects`), `endUserToken`, optionally `consistency`, and `action` + `resource`, `checks`, or `action` + `type` with optional `limit` and `cursor`. A check with `count: n` stands for n copies. |
 | `expectRequest` | `method`, `path` and optionally `body` the server must receive. Omitted means the body is not asserted. |
 | `response` | What the server sends: `status`, `headers`, `body` (a string is sent as is), `delayMs` before answering, or `drop: true` to close the connection. |
 | `nonconformingResponse` | `true` when the response deliberately breaks the contract, to test how an SDK treats a misbehaving server. The contract test requires such a response to really fail validation. |

@@ -729,3 +729,149 @@ test(
       );
     }),
 );
+
+const LIST = "/v1/list-objects";
+const listRead = {
+  application: "crm-prod",
+  relation: "read",
+  type: "document",
+};
+
+test("lists only the objects the end user holds the relation on", opts, () =>
+  withApp(async ({ admin }) => {
+    const alice = await admin("admin", listRead, "alice-token", LIST);
+    assert.equal(alice.status, 200);
+    assert.deepEqual(alice.body.objects, ["document:d1"]);
+    assert.equal("nextCursor" in alice.body, false);
+    assert.match(String(alice.body.modelId), /^[0-9A-Z]{26}$/);
+    const bob = await admin("admin", listRead, "bob-token", LIST);
+    assert.deepEqual(bob.body.objects, []);
+  }),
+);
+
+test(
+  "list-objects refuses what check refuses: no scope, unbound or foreign application, bad end user",
+  opts,
+  () =>
+    withApp(async ({ admin }) => {
+      assert.equal(
+        (await admin("admin", listRead, undefined, LIST)).status,
+        401,
+      );
+      assert.equal(
+        (await admin("admin", listRead, "userset-token", LIST)).status,
+        401,
+      );
+      assert.equal(
+        (await admin("noScope", listRead, "alice-token", LIST)).status,
+        403,
+      );
+      assert.equal(
+        (
+          await admin(
+            "crmOnly",
+            { ...listRead, application: "hr-prod" },
+            "alice-token",
+            LIST,
+          )
+        ).status,
+        403,
+      );
+      const foreign = await admin("otherTenant", listRead, "alice-token", LIST);
+      const missing = await admin(
+        "otherTenant",
+        { ...listRead, application: "hr-prod" },
+        "alice-token",
+        LIST,
+      );
+      assert.equal(foreign.status, 404);
+      assert.deepEqual(
+        { ...foreign.body, requestId: null },
+        { ...missing.body, requestId: null },
+      );
+    }),
+);
+
+test("list-objects rejects bad limits, cursors and fields", opts, () =>
+  withApp(async ({ admin }) => {
+    const bad = [
+      { ...listRead, limit: 0 },
+      { ...listRead, limit: 101 },
+      { ...listRead, limit: 1.5 },
+      { ...listRead, cursor: "not base64 object" },
+      // A cursor from another type's listing cannot widen this one.
+      { ...listRead, cursor: Buffer.from("folder:f1").toString("base64url") },
+      { ...listRead, type: "document:d1" },
+      { ...listRead, user: "user:alice" },
+    ];
+    for (const body of bad) {
+      const res = await admin("admin", body, "alice-token", LIST);
+      assert.equal(res.status, 400, JSON.stringify(body));
+    }
+  }),
+);
+
+test(
+  "list-objects pages in ascending order and the cursor resumes after the last object",
+  opts,
+  () =>
+    withApp(async ({ callWith }) => {
+      const upstream = createServer((_, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            objects: [
+              "document:c",
+              "document:a",
+              "document:e",
+              "document:b",
+              "document:d",
+            ],
+          }),
+        );
+      });
+      const port = await listen(upstream);
+      try {
+        const call = await callWith(`http://127.0.0.1:${port}`, 2000);
+        const seen: unknown[] = [];
+        let cursor: unknown;
+        for (let page = 0; page < 5; page++) {
+          const res = await call(
+            "admin",
+            { ...listRead, limit: 2, ...(cursor ? { cursor } : {}) },
+            "alice-token",
+            LIST,
+          );
+          assert.equal(res.status, 200);
+          seen.push(...(res.body.objects as unknown[]));
+          cursor = res.body.nextCursor;
+          if (cursor === undefined) break;
+        }
+        assert.deepEqual(seen, [
+          "document:a",
+          "document:b",
+          "document:c",
+          "document:d",
+          "document:e",
+        ]);
+        assert.equal(cursor, undefined);
+      } finally {
+        upstream.closeAllConnections();
+        upstream.close();
+      }
+    }),
+);
+
+test(
+  "list-objects lists nothing, with a code, when OpenFGA is unreachable",
+  opts,
+  () =>
+    withApp(async ({ callWith }) => {
+      const call = await callWith("http://127.0.0.1:1", 2000);
+      const res = await call("admin", listRead, "alice-token", LIST);
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body.objects, []);
+      assert.equal(res.body.code, "backend_error");
+      assert.equal("modelId" in res.body, false);
+    }),
+);

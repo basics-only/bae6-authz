@@ -67,6 +67,7 @@ const STATIC_ROUTES = new Set([
   "/v1/workload-bindings",
   "/v1/check",
   "/v1/batch-check",
+  "/v1/list-objects",
   "/v1/explorer/check",
 ]);
 
@@ -124,7 +125,7 @@ export function observeRequest(
  * from inside `fn` to hand this span's context to OpenFGA.
  */
 export async function observeOpenFga<T>(
-  operation: "check" | "batch_check",
+  operation: "check" | "batch_check" | "list_objects",
   fn: () => Promise<T>,
 ): Promise<T> {
   const started = performance.now();

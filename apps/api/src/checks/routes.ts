@@ -13,6 +13,8 @@ import {
 const APPLICATION = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const SUBJECT = /^[A-Za-z0-9._@+-]{1,128}$/;
 const OBJECT = /^[a-z_]+:[^\s#]+$/;
+const TYPE = /^[a-z_]+$/;
+const LIST_LIMIT = 100;
 
 function invalid(message: string) {
   return new HttpError(400, "invalid_request", message);
@@ -126,6 +128,58 @@ function batchBody(body: unknown, maxBatchSize: number) {
   return { application, items, consistency };
 }
 
+/** The cursor is the page's last object, base64url-encoded so callers treat it as opaque. */
+const cursorOf = (object: string) => Buffer.from(object).toString("base64url");
+
+function listBody(body: unknown) {
+  if (
+    !isObject(body) ||
+    !hasOnly(body, [
+      "application",
+      "relation",
+      "type",
+      "limit",
+      "cursor",
+      "consistency",
+    ]) ||
+    typeof body.relation !== "string" ||
+    body.relation === "" ||
+    typeof body.type !== "string" ||
+    !TYPE.test(body.type)
+  ) {
+    throw invalid(
+      "Body must be {application, relation, type} with valid values.",
+    );
+  }
+  const { limit = LIST_LIMIT, cursor } = body;
+  if (
+    typeof limit !== "number" ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > LIST_LIMIT
+  ) {
+    throw invalid(`limit must be an integer from 1 to ${LIST_LIMIT}.`);
+  }
+  let after: string | undefined;
+  if (cursor !== undefined) {
+    after =
+      typeof cursor === "string" && cursor.length <= 1024
+        ? Buffer.from(cursor, "base64url").toString()
+        : "";
+    if (!OBJECT.test(after) || !after.startsWith(`${body.type}:`)) {
+      throw invalid("cursor is not a cursor from this listing.");
+    }
+  }
+  return {
+    application: applicationOf(body),
+    relation: body.relation,
+    type: body.type,
+    limit,
+    after,
+    consistency: consistencyOf(body),
+  };
+}
+
 /** Returns true if the request was handled. Business logic lives in the service. */
 export function checkRoutes(deps: {
   service: CheckService;
@@ -139,7 +193,11 @@ export function checkRoutes(deps: {
     url: URL,
   ): Promise<boolean> => {
     const isBatch = url.pathname === "/v1/batch-check";
-    if (!(isBatch || url.pathname === "/v1/check") || req.method !== "POST") {
+    const isList = url.pathname === "/v1/list-objects";
+    if (
+      !(isBatch || isList || url.pathname === "/v1/check") ||
+      req.method !== "POST"
+    ) {
       return false;
     }
 
@@ -179,7 +237,18 @@ export function checkRoutes(deps: {
 
     try {
       let result: object;
-      if (isBatch) {
+      if (isList) {
+        const input = listBody(body);
+        permit(input.application);
+        const { after, ...page } = await deps.service.list(
+          principal.organization,
+          input.application,
+          endUser,
+          input,
+        );
+        result =
+          after === undefined ? page : { ...page, nextCursor: cursorOf(after) };
+      } else if (isBatch) {
         const { application, items, consistency } = batchBody(
           body,
           deps.maxBatchSize,

@@ -95,6 +95,15 @@ async def _invoke(case: dict[str, Any], base_url: str) -> object:
     timeout = case.get("client", {}).get("timeoutMs", 2000) / 1000
     consistency = call.get("consistency")
     async with Authz(base_url, BEARER, "crm", timeout=timeout) as authz:
+        if call["operation"] == "listObjects":
+            return await authz.list_objects(
+                action=call["action"],
+                type=call["type"],
+                end_user_token=call["endUserToken"],
+                limit=call.get("limit"),
+                cursor=call.get("cursor"),
+                consistency=consistency,
+            )
         if call["operation"] == "check":
             return await authz.check(
                 action=call["action"],

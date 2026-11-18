@@ -22,6 +22,11 @@ const OPERATIONS: Record<
     request: "BatchCheckRequest",
     response: "BatchCheckResponse",
   },
+  listObjects: {
+    path: "/v1/list-objects",
+    request: "ListObjectsRequest",
+    response: "ListObjectsResponse",
+  },
 };
 
 /**
@@ -55,7 +60,9 @@ export function conformanceProblems(
     const say = (msg: string) => problems.push(`${file}: ${msg}`);
     const op = OPERATIONS[(c.call as Json | undefined)?.operation as string];
     if (!op) {
-      say("call.operation must be check or batchCheck");
+      say(
+        `call.operation must be one of ${Object.keys(OPERATIONS).join(", ")}`,
+      );
       continue;
     }
     const declared = paths[op.path]?.post?.responses ?? {};

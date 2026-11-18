@@ -34,6 +34,14 @@ export interface BatchResult {
   results: { correlationId: string; status: Decision }[];
 }
 
+export interface ListPage {
+  objects: string[];
+  /** The last object of this page, when more follow. */
+  after?: string;
+  modelId?: string;
+  code?: IndeterminateCode;
+}
+
 /** The request is malformed for this application's model (unknown type or relation). */
 export class InvalidCheck extends Error {}
 
@@ -56,7 +64,7 @@ export function createCheckService(deps: {
   async function guarded<T>(
     organization: string,
     applicationId: string,
-    operation: "check" | "batch_check",
+    operation: "check" | "batch_check" | "list_objects",
     call: (client: OpenFgaClient, modelId: string) => Promise<T>,
     fail: (code: IndeterminateCode) => T,
   ): Promise<T> {
@@ -177,6 +185,54 @@ export function createCheckService(deps: {
           };
         },
         allIndeterminate,
+      );
+    },
+
+    /**
+     * One page of the objects of `type` the end user holds `relation` on, in ascending
+     * order after `after`. OpenFGA has no pagination, so every page re-runs the listing.
+     */
+    list(
+      organization: string,
+      applicationId: string,
+      endUser: string,
+      input: {
+        relation: string;
+        type: string;
+        limit: number;
+        after?: string | undefined;
+        consistency?: Consistency | undefined;
+      },
+    ): Promise<ListPage> {
+      return guarded<ListPage>(
+        organization,
+        applicationId,
+        "list_objects",
+        async (client, modelId) => {
+          // shortcut: bounded by OpenFGA's own result cap and deadline, beyond which
+          // results are silently partial; upgrade to StreamedListObjects if lists outgrow it.
+          const { objects } = await client.listObjects(
+            {
+              user: `user:${endUser}`,
+              relation: input.relation,
+              type: input.type,
+            },
+            requestOptions(input.consistency),
+          );
+          const { after } = input;
+          const sorted = objects
+            .filter((o) => after === undefined || o > after)
+            .sort();
+          const page = sorted.slice(0, input.limit);
+          return {
+            objects: page,
+            modelId,
+            ...(sorted.length > page.length
+              ? { after: page[page.length - 1] as string }
+              : {}),
+          };
+        },
+        (code) => ({ objects: [], code }),
       );
     },
   };

@@ -186,6 +186,68 @@ paths:
           $ref: "#/components/responses/Error"
         "503":
           $ref: "#/components/responses/Error"
+  /v1/list-objects:
+    post:
+      tags: [check]
+      operationId: listObjects
+      summary: List the objects of a type the end user holds a relation on
+      description: |
+        Returns object IDs in ascending order, at most `limit` (1 to 100, default 100)
+        per page. Pass `nextCursor` back as `cursor` for the next page; its absence
+        means the last page. Each page is evaluated afresh, so pages reflect the
+        relationships at the time each is requested. OpenFGA caps one evaluation
+        (by default 1000 objects or 3 seconds), so a very large result can be
+        incomplete without notice: use `check` for a decision on a specific object.
+        If authorization is unavailable the response is `200` with `code` set and
+        no objects; it never lists an object it could not confirm.
+        Required scope: `check`.
+      security:
+        - bearerAuth: [check]
+          endUserToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListObjectsRequest"
+            examples:
+              readable-documents:
+                value:
+                  application: crm
+                  relation: read
+                  type: document
+                  limit: 2
+      responses:
+        "200":
+          description: One page of objects.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListObjectsResponse"
+              examples:
+                page:
+                  value:
+                    requestId: req_01HZX8
+                    modelId: 01HZX3MODEL
+                    objects: ["document:d1", "document:d2"]
+                    nextCursor: ZG9jdW1lbnQ6ZDI
+                outage:
+                  value:
+                    requestId: req_01HZX9
+                    objects: []
+                    code: timeout
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
   /v1/me:
     get:
       tags: [applications]
@@ -1019,6 +1081,52 @@ components:
             $ref: "#/components/schemas/BatchCheckItem"
         consistency:
           $ref: "#/components/schemas/Consistency"
+    ListObjectsRequest:
+      type: object
+      additionalProperties: false
+      required: [application, relation, type]
+      properties:
+        application:
+          $ref: "#/components/schemas/ApplicationId"
+        relation:
+          type: string
+          examples: [read]
+        type:
+          type: string
+          pattern: "^[a-z_]+$"
+          examples: [document]
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 100
+        cursor:
+          type: string
+          description: A previous page's `nextCursor`, unchanged.
+        consistency:
+          $ref: "#/components/schemas/Consistency"
+    ListObjectsResponse:
+      type: object
+      required: [requestId, objects]
+      properties:
+        requestId:
+          type: string
+        modelId:
+          type: string
+          description: Absent when `code` is set.
+        objects:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ObjectRef"
+        nextCursor:
+          type: string
+          description: Present when more objects follow.
+        code:
+          type: string
+          description: |
+            Present only when the list could not be computed, with `objects` empty:
+            `timeout`, `backend_error` or `no_active_model`. New values may be added.
     BatchCheckResult:
       type: object
       required: [correlationId, status]
