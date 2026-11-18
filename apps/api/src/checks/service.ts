@@ -14,7 +14,14 @@ import {
 export type Consistency = "minimize_latency" | "higher_consistency";
 
 export type Decision = "allow" | "deny" | "indeterminate";
-export type IndeterminateCode = "timeout" | "backend_error" | "no_active_model";
+export type IndeterminateCode =
+  | "timeout"
+  | "backend_error"
+  | "no_active_model"
+  | "result_truncated";
+
+/** OpenFGA's OPENFGA_LIST_OBJECTS_MAX_RESULTS default; keep equal to the deployed value. */
+export const LIST_OBJECTS_MAX_RESULTS = 1000;
 
 export interface CheckResult {
   status: Decision;
@@ -209,8 +216,8 @@ export function createCheckService(deps: {
         applicationId,
         "list_objects",
         async (client, modelId) => {
-          // shortcut: bounded by OpenFGA's own result cap and deadline, beyond which
-          // results are silently partial; upgrade to StreamedListObjects if lists outgrow it.
+          // shortcut: OpenFGA's deadline can still cut a list short without a signal;
+          // upgrade to StreamedListObjects if lists approach the cap or the deadline.
           const { objects } = await client.listObjects(
             {
               user: `user:${endUser}`,
@@ -219,6 +226,10 @@ export function createCheckService(deps: {
             },
             requestOptions(input.consistency),
           );
+          // At the cap OpenFGA may have dropped objects; a partial list must not look complete.
+          if (objects.length >= LIST_OBJECTS_MAX_RESULTS) {
+            return { objects: [], modelId, code: "result_truncated" };
+          }
           const { after } = input;
           const sorted = objects
             .filter((o) => after === undefined || o > after)
