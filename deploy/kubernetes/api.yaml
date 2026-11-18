@@ -13,9 +13,13 @@ data:
   # refuses connections. The readiness probe below fails after 3 x 5s; keep this below 22000.
   RIZ_SHUTDOWN_DELAY_MS: "10000"
   OPENFGA_API_URL: http://openfga.openfga.svc.cluster.local:8080
+  # Printed by `bootstrap-admin` (docs/decisions/0004-admin-authorization.md). The API will not start without them.
+  RIZ_ADMIN_STORE_ID: replace-with-the-riz-admin-store-id
+  RIZ_ADMIN_MODEL_ID: replace-with-the-riz-admin-model-id
   # Workload and end-user token issuers. Replace with your identity provider.
+  # adminAudience is optional: only tokens that carry it can administer riz.
   RIZ_OIDC_ISSUERS: >-
-    [{"issuer":"https://idp.example.invalid/","audience":"riz","jwksUri":"https://idp.example.invalid/.well-known/jwks.json"}]
+    [{"issuer":"https://idp.example.invalid/","audience":"riz","adminAudience":"riz-admin","jwksUri":"https://idp.example.invalid/.well-known/jwks.json"}]
 ---
 apiVersion: apps/v1
 kind: Deployment
