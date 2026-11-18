@@ -9,6 +9,9 @@ metadata:
 data:
   PORT: "8080"
   RIZ_AUTH_MODE: oidc
+  # On SIGTERM keep listening, unready, this long so the Service drops the pod before it
+  # refuses connections. The readiness probe below fails after 3 x 5s; keep this below 22000.
+  RIZ_SHUTDOWN_DELAY_MS: "10000"
   OPENFGA_API_URL: http://openfga.openfga.svc.cluster.local:8080
   # Printed by `bootstrap-admin` (docs/decisions/0004-admin-authorization.md). The API will not start without them.
   RIZ_ADMIN_STORE_ID: replace-with-the-riz-admin-store-id

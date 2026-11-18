@@ -28,6 +28,7 @@ import { setupObservability } from "./observability.js";
 import { providerRoutes } from "./providers/routes.js";
 import { createProviderService } from "./providers/service.js";
 import { createApp } from "./server.js";
+import { drain } from "./shutdown.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -131,13 +132,15 @@ const ADMIN_PATH =
   /^\/v1\/(me|applications|audit|models|providers|relationships|workload-bindings|explorer)(\/|$)/;
 
 const port = Number(process.env.PORT ?? 8080);
-createApp({
+const dependenciesDown = readiness({
+  pool,
+  openfgaUrl: required("OPENFGA_API_URL"),
+  timeoutMs: readyTimeoutMs,
+});
+let draining = false;
+const server = createApp({
   authenticate,
-  readiness: readiness({
-    pool,
-    openfgaUrl: required("OPENFGA_API_URL"),
-    timeoutMs: readyTimeoutMs,
-  }),
+  readiness: async () => (draining ? ["shutting_down"] : dependenciesDown()),
   routes: async (req, res, principal, url) => {
     // Checks first and with the caller as authenticated: the check path never waits on the admin store.
     if (await checks(req, res, principal, url)) return true;
@@ -153,6 +156,39 @@ createApp({
       (await providersHandler(req, res, admin, url))
     );
   },
-}).listen(port, "0.0.0.0", () => {
+});
+server.listen(port, "0.0.0.0", () => {
   console.log(JSON.stringify({ msg: "riz api listening", port }));
 });
+
+// Kubernetes sends SIGTERM, then SIGKILL after 30s by default; finish before that.
+// Budget: the delay, then draining, then closing the pool (POOL_CLOSE_MS).
+const SHUTDOWN_TOTAL_MS = 25_000;
+const POOL_CLOSE_MS = 2000;
+// While unready but still listening, the load balancer sees /health/ready fail and stops
+// routing here. Set it to about the readiness period times its failure threshold.
+const shutdownDelayMs = Number(process.env.RIZ_SHUTDOWN_DELAY_MS ?? 0);
+if (
+  !Number.isInteger(shutdownDelayMs) ||
+  shutdownDelayMs < 0 ||
+  shutdownDelayMs > SHUTDOWN_TOTAL_MS - POOL_CLOSE_MS - 1000
+) {
+  throw new Error("RIZ_SHUTDOWN_DELAY_MS must be an integer from 0 to 22000");
+}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, async () => {
+    console.log(JSON.stringify({ msg: "riz api draining", signal }));
+    draining = true;
+    try {
+      await sleep(shutdownDelayMs);
+      await drain(server, SHUTDOWN_TOTAL_MS - POOL_CLOSE_MS - shutdownDelayMs);
+      // Cut handlers may still hold a client, and pool.end() waits for them.
+      await Promise.race([pool.end(), sleep(POOL_CLOSE_MS)]);
+      process.exit(0);
+    } catch {
+      console.error(JSON.stringify({ msg: "shutdown failed" }));
+      process.exit(1);
+    }
+  });
+}
